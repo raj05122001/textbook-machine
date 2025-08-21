@@ -287,44 +287,11 @@ const BookCard = ({
         )}
       </div>
 
-      {/* Progress Indicators */}
-      {showProgress && (readingProgress > 0 || completionProgress > 0) && (
-        <div className="absolute -bottom-8 left-0 right-0 px-1">
-          {readingProgress > 0 && (
-            <div className="mb-1">
-              <div className="flex justify-between text-xs text-gray-600 mb-1">
-                <span>Reading</span>
-                <span>{readingProgress}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-1">
-                <div 
-                  className="bg-blue-500 h-1 rounded-full transition-all"
-                  style={{ width: `${readingProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
-          
-          {completionProgress > 0 && (
-            <div>
-              <div className="flex justify-between text-xs text-gray-600 mb-1">
-                <span>Complete</span>
-                <span>{completionProgress}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-1">
-                <div 
-                  className="bg-green-500 h-1 rounded-full transition-all"
-                  style={{ width: `${completionProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+
 
       {/* Hover Actions */}
       {showActions && isHovered && (
-        <div className="absolute inset-x-0 -bottom-12 flex justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <div className="absolute inset-x-0 bottom-2 flex justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -424,22 +391,7 @@ const BookCard = ({
         </div>
       )}
 
-      {/* Book Info Card (Bottom) */}
-      <div className="mt-4 text-center">
-        <h4 className="font-semibold text-gray-900 text-sm truncate">{book.title}</h4>
-        {book.author && (
-          <p className="text-xs text-gray-600 flex items-center justify-center mt-1">
-            <User className="h-3 w-3 mr-1" />
-            {book.author}
-          </p>
-        )}
-        {book.lastModified && (
-          <p className="text-xs text-gray-500 flex items-center justify-center mt-1">
-            <Calendar className="h-3 w-3 mr-1" />
-            {formatDate(book.lastModified)}
-          </p>
-        )}
-      </div>
+
 
       {/* CSS for 3D Effects and Animations */}
       <style jsx>{`
