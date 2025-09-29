@@ -45,7 +45,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const mainMenuItems = [
     {
       title: 'Dashboard',
-      href: '/',
+      href: '/dashboard',
       icon: TrendingUp,
     },
     {

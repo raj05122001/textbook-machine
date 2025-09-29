@@ -24,3 +24,42 @@ body {
   color: black;
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Thin scrollbar just for elements with .thin-scrollbar */
+.thin-scrollbar {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb, rgba(0,0,0,.35)) transparent;
+}
+
+/* WebKit (Chrome, Edge, Safari) */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px; /* horizontal bars if any */
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--sb-thumb, rgba(0,0,0,.35));
+  border-radius: 9999px;
+  border: 2px solid transparent;     /* keeps it slim with some spacing */
+  background-clip: padding-box;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0,0,0,.5);
+}
+
+/* optional: darker thumb in dark mode */
+@media (prefers-color-scheme: dark) {
+  .thin-scrollbar {
+    scrollbar-color: rgba(255,255,255,.35) transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(255,255,255,.35);
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255,255,255,.55);
+  }
+}
+

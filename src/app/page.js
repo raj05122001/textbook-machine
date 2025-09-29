@@ -1,103 +1,235 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import BookGrid from '@/components/book/BookGrid';
+import BookStats from '@/components/book/BookStats';
+import { 
+  Plus, 
+  BookOpen, 
+  Search, 
+  Filter, 
+  SortAsc, 
+  Layout, 
+  BarChart3, 
+  Download, 
+  Upload, 
+  Settings, 
+  Star, 
+  Clock, 
+  TrendingUp,
+  Users,
+  Target,
+  Zap,
+  Archive,
+  Trash2,
+  Edit3,
+  Eye,
+  Share2,
+  MoreHorizontal,
+  RefreshCw,
+  HelpCircle,
+  Bell,
+  Bookmark,
+  Heart,
+  Activity,
+  Calendar,
+  FileText
+} from 'lucide-react';
+import axios from 'axios';
+
+const BooksLibraryPage = () => {
+  const router = useRouter();
+  
+  // State management
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState([]);
+
+  // Load sample data
+  // BooksLibraryPage.jsx
+useEffect(() => {
+  const loadBooks = async () => {
+    try {
+      setLoading(true);
+
+      const { data } = await axios.get(
+        "https://tbmplus-backend.ultimeet.io/api/books/",
+        { withCredentials: true }
+      );
+
+      const toUi = (b) => {
+        const statusMap = (s) => {
+          switch ((s || "").toUpperCase()) {
+            case "DRAFT": return "draft";
+            case "PUBLISHED": 
+            case "APPROVED": return "published";
+            case "IN_PROGRESS":
+            case "IN-PROGRESS": return "in-progress";
+            case "COMPLETED": return "completed";
+            default: return "draft";
+          }
+        };
+
+        // count lessons as "chapters"
+        const chapters =
+          Array.isArray(b.units)
+            ? b.units.reduce((acc, u) => acc + (u.lessons?.length || 0), 0)
+            : 0;
+
+        // quick tags from meta
+        const tags = [b.category, b.language, b.educational_level].filter(Boolean);
+
+        return {
+          id: b.id,
+          title: b.title,
+          description: b.description || "",
+          status: statusMap(b.status),
+          author: b.author_name || "",
+          language: b.language || "",
+          category: b.category || "",
+          createdAt: b.created_at,
+          lastModified: b.updated_at,
+          chapters,
+          tags,
+          // nice-to-haves for your grid:
+          rating: 0,
+          readingProgress: 0,
+          wordCount: (b.expected_pages || 0) * 250, // rough estimate
+          isBookmarked: false,
+        };
+      };
+
+      const list = Array.isArray(data?.data) ? data.data.map(toUi) : [];
+      setBooks(list);
+    } catch (err) {
+      console.error("books load failed:", err);
+      setBooks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  loadBooks();
+}, []);
+
+
+  // Sample notifications
+  useEffect(() => {
+    setNotifications([
+      {
+        id: 1,
+        type: 'success',
+        title: 'Book Published',
+        message: 'Advanced Mathematics Textbook has been published successfully',
+        timestamp: '2 hours ago',
+        read: false
+      },
+      {
+        id: 2,
+        type: 'info',
+        title: 'New Review',
+        message: 'Physics Fundamentals received a 5-star review',
+        timestamp: '1 day ago',
+        read: false
+      },
+      {
+        id: 3,
+        type: 'warning',
+        title: 'Draft Reminder',
+        message: 'Chemistry Basics has been in draft for 2 weeks',
+        timestamp: '3 days ago',
+        read: true
+      }
+    ]);
+  }, []);
+
+  // Event handlers
+  const handleBookSelect = (book) => {
+    router.push(`/books/${book.id}`);
+  };
+
+  const handleBookEdit = (book) => {
+    router.push(`/editor/${book.id}`);
+  };
+
+  const handleBookDelete = (book) => {
+    if (confirm(`Are you sure you want to delete "${book.title}"?`)) {
+      setBooks(prev => prev.filter(b => b.id !== book.id));
+    }
+  };
+
+  const handleBookRead = (book) => {
+    router.push(`/books/${book.id}/read`);
+  };
+
+  const handleBookDownload = (book) => {
+    // Simulate download
+    console.log('Downloading book:', book.title);
+  };
+
+  const handleBookShare = (book) => {
+    if (navigator.share) {
+      navigator.share({
+        title: book.title,
+        text: book.description,
+        url: `${window.location.origin}/books/${book.id}`
+      });
+    } else {
+      navigator.clipboard.writeText(`${window.location.origin}/books/${book.id}`);
+      alert('Link copied to clipboard!');
+    }
+  };
+
+  const handleBookBookmark = (bookId, isBookmarked) => {
+    setBooks(prev => prev.map(book => 
+      book.id === bookId ? { ...book, isBookmarked } : book
+    ));
+  };
+
+  const handleBulkDelete = (bookIds) => {
+    if (confirm(`Are you sure you want to delete ${bookIds.length} book(s)?`)) {
+      setBooks(prev => prev.filter(book => !bookIds.includes(book.id)));
+    }
+  };
+
+  const handleBulkDownload = (selectedBooks) => {
+    console.log('Bulk downloading:', selectedBooks.map(b => b.title));
+  };
+
+  const handleBulkArchive = (bookIds) => {
+    console.log('Bulk archiving:', bookIds);
+  };
+
+  const handleCreateNew = () => {
+    router.push('/create-book');
+  };
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+    <div className="min-h-screen bg-gray-50 p-6">
+       <BookGrid
+          books={books}
+          loading={loading}
+          onBookSelect={handleBookSelect}
+          onBookEdit={handleBookEdit}
+          onBookDelete={handleBookDelete}
+          onBookDownload={handleBookDownload}
+          onBookShare={handleBookShare}
+          onBookRead={handleBookRead}
+          onBookBookmark={handleBookBookmark}
+          onCreateNew={handleCreateNew}
+          onBulkDelete={handleBulkDelete}
+          onBulkDownload={handleBulkDownload}
+          onBulkArchive={handleBulkArchive}
+          defaultView="grid"
+          defaultSort="lastModified"
+          showStats={true}
+          showFilters={true}
+          showBulkActions={true}
+          className=""
         />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
-}
+};
+
+export default BooksLibraryPage;

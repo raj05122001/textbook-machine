@@ -2,8 +2,10 @@ tbm-frontend/
 ├── src/
 │   ├── app/
 │   │   ├── layout.js                    # Root layout
-│   │   ├── page.js                      # Home page
 │   │   ├── globals.css                  # Tailwind + global styles
+│   │   │
+│   │   ├── dashboard/
+│   │   │   └── page.jsx                 # Home page ✅
 │   │   │
 │   │   ├── create-book/
 │   │   │   └── page.jsx                 # Upload/Landing page ✅
