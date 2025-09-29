@@ -791,6 +791,14 @@ function Step5Content({ isStreaming, processingStep, contentPhase, lessonProgres
               {contentPhase.message || processingStep || (isStreaming ? 'Preparing…' : 'Ready')}
             </div>
 
+            {/* 👇 NEW: ETA line near the loader */}
+            {isStreaming && (
+              <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                <Clock className="h-3.5 w-3.5" />
+                <span>ETA ~30–40 min</span>
+              </div>
+            )}
+
             {total > 0 && (
               <div className="mt-2 flex items-center gap-3">
                 <div className="h-1.5 bg-gray-200 rounded w-48 overflow-hidden">
