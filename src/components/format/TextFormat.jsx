@@ -100,7 +100,7 @@ function markdownToHtml(src) {
   s = s.replace(/(?:^|\n)([-*]\s[^\n]+(?:\s[-*]\s[^\n]+)+)/g, (block) =>
     block.replace(/\s([-*])\s(?=[^\n])/g, "\n$1 ")
   );
-  s = s.replace(/([^\n])\s(\d+)\.\s/g, "$1\n$2. ");
+  // s = s.replace(/([^\n])\s(\d+)\.\s/g, "$1\n$2. ");
 
   // protect allowed raw HTML tags using tokens (restore later)
   const ALLOWED_TAG = /<(\/?(?:div|span|p|h[1-6]|table|thead|tbody|tr|th|td|img|a|em|strong|blockquote|ul|ol|li|hr|br|section))(\s[^>]*)?>/gi;
