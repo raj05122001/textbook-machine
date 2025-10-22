@@ -26,7 +26,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const [expandedSections, setExpandedSections] = useState({
     books: true,
     library: false,
-    recent: true
+    recent: false
   });
   const pathname = usePathname();
 
@@ -113,28 +113,12 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   return (
     <>
-      {/* Mobile Overlay */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black bg-opacity-50"
-          onClick={onClose}
-        />
-      )}
 
       {/* Sidebar */}
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out ${
         isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
         <div className="flex flex-col h-full">
-          {/* Mobile Close Button */}
-          <div className=" flex justify-end p-4">
-            <button
-              onClick={onClose}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
 
           {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto px-4 py-4 lg:py-6">
@@ -200,11 +184,11 @@ const Sidebar = ({ isOpen, onClose }) => {
                           <Icon className="h-4 w-4" />
                           <span>{item.title}</span>
                         </div>
-                        {item.count && (
+                        {/* {item.count && (
                           <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
                             {item.count}
                           </span>
-                        )}
+                        )} */}
                       </Link>
                     );
                   })}
