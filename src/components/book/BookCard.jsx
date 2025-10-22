@@ -81,16 +81,6 @@ const BookCard = ({
     onBookmark?.(book.id, !isBookmarked);
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  const readingProgress = book.readingProgress || 0;
-  const completionProgress = book.completionProgress || 0;
 
   if (view === 'compact') {
     return (
@@ -286,112 +276,6 @@ const BookCard = ({
           </div>
         )}
       </div>
-
-
-
-      {/* Hover Actions */}
-      {showActions && isHovered && (
-        <div className="absolute inset-x-0 bottom-2 flex justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRead?.(book);
-            }}
-            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
-            title="Read Book"
-          >
-            <Play className="h-4 w-4" />
-          </button>
-          
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit?.(book);
-            }}
-            className="p-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors shadow-lg"
-            title="Edit Book"
-          >
-            <Edit3 className="h-4 w-4" />
-          </button>
-          
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDownload?.(book);
-            }}
-            className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-lg"
-            title="Download"
-          >
-            <Download className="h-4 w-4" />
-          </button>
-          
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowMenu(!showMenu);
-              }}
-              className="p-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors shadow-lg"
-              title="More Actions"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-            
-            {/* More Actions Menu */}
-            {showMenu && (
-              <>
-                <div 
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowMenu(false)}
-                />
-                <div className="absolute bottom-full right-0 mb-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
-                  <div className="py-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onShare?.(book);
-                        setShowMenu(false);
-                      }}
-                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      <Share2 className="h-4 w-4 mr-3" />
-                      Share
-                    </button>
-                    
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onView?.(book);
-                        setShowMenu(false);
-                      }}
-                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      <Eye className="h-4 w-4 mr-3" />
-                      View Details
-                    </button>
-                    
-                    <div className="border-t border-gray-100">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete?.(book);
-                          setShowMenu(false);
-                        }}
-                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4 mr-3" />
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-
 
       {/* CSS for 3D Effects and Animations */}
       <style jsx>{`

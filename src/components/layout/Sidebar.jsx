@@ -116,7 +116,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       {/* Mobile Overlay */}
       {isOpen && (
         <div 
-          className="lg:hidden fixed inset-0 z-40 bg-black bg-opacity-50"
+          className="fixed inset-0 z-40 bg-black bg-opacity-50"
           onClick={onClose}
         />
       )}
@@ -127,7 +127,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       }`}>
         <div className="flex flex-col h-full">
           {/* Mobile Close Button */}
-          <div className="lg:hidden flex justify-end p-4">
+          <div className=" flex justify-end p-4">
             <button
               onClick={onClose}
               className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"

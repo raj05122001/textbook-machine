@@ -2,25 +2,22 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useDropzone } from 'react-dropzone';
 import {
   Upload, FileText, X, Check, AlertCircle, Loader2, BookOpen,
   Plus, Sparkles, Zap, Clock, Target, ChevronRight, ChevronLeft, Edit3,
   Save, MessageSquare, CheckCircle2, Trash2, HelpCircle, ArrowRight
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
-import GeneratedPayloadModal from '@/components/GeneratedPayloadModal';
-
+import { Step1BookDetails } from '@/components/create_book/Step1BookDetails';
+import { Step2AISettings } from '@/components/create_book/Step2AISettings';
+import { Step3SyllabusInput } from '@/components/create_book/Step3SyllabusInput';
+import { Step4SyllabusReview } from '@/components/create_book/Step4SyllabusReview';
+import { Step5Content } from '@/components/create_book/Step5Content';
 /* ================== API & WS CONFIG ================== */
 const API_BASE = 'https://tbmplus-backend.ultimeet.io';
 const WS_BASE = API_BASE.replace(/^https/i, 'wss'); // => wss://tbmplus-backend.ultimeet.io
 
-/* ================== SHARED UTILS ================== */
-const clone = (o) =>
-  typeof structuredClone === 'function' ? structuredClone(o) : JSON.parse(JSON.stringify(o));
-
 const pickSyllabusPayload = (raw) => raw?.syllabus_json ?? raw?.syllabus ?? null;
-const pickContentPayload  = (raw) => raw?.content_json  ?? raw?.content  ?? null;
 
 async function jfetch(path, { method = 'GET', body } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -37,29 +34,6 @@ async function jfetch(path, { method = 'GET', body } = {}) {
   return res.json().catch(() => ({}));
 }
 
-
-/* ---- Editable ---- */
-function Editable({ value, placeholder = '', className = '', onChange }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (ref.current && ref.current.innerText !== (value || '')) {
-      ref.current.innerText = value || '';
-    }
-  }, [value]);
-  return (
-    <div
-      ref={ref}
-      role="textbox"
-      contentEditable
-      suppressContentEditableWarning
-      spellCheck
-      onInput={(e) => onChange(e.target.innerText)}
-      onBlur={(e) => onChange(e.target.innerText.trim())}
-      data-placeholder={placeholder}
-      className={`outline-none whitespace-pre-wrap empty:before:text-gray-400 empty:before:content-[attr(data-placeholder)] ${className}`}
-    />
-  );
-}
 
 /* ---- Syllabus normalize/denormalize ---- */
 function normalizeSyllabus(raw) {
@@ -103,757 +77,6 @@ function denormalizeSyllabus(doc) {
   };
 }
 
-/* ================== STEP SUB-COMPONENTS ================== */
-function Step1BookDetails({ formData, setFormData }) {
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Book Information</h2>
-        <p className="text-gray-600">Provide details about your book</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Book Title *</label>
-          <input
-            type="text"
-            value={formData.title}
-            onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))}
-            placeholder="Enter your book title"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Author Name *</label>
-          <input
-            type="text"
-            value={formData.author}
-            onChange={(e) => setFormData((p) => ({ ...p, author: e.target.value }))}
-            placeholder="Your name"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-          <textarea
-            rows={4}
-            value={formData.description}
-            onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
-            placeholder="Brief description of your book"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-          <select
-            value={formData.category}
-            onChange={(e) => setFormData((p) => ({ ...p, category: e.target.value }))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="ACADEMICS">ACADEMICS</option>
-            <option value="TRAINING">TRAINING</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Language</label>
-          <select
-            value={formData.language}
-            onChange={(e) => setFormData((p) => ({ ...p, language: e.target.value }))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="ENGLISH">ENGLISH</option>
-            <option value="FRENCH">FRENCH</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Educational Level</label>
-          <input
-            type="text"
-            value={formData.educational_level}
-            onChange={(e) => setFormData((p) => ({ ...p, educational_level: e.target.value }))}
-            placeholder="e.g., 12TH, UG, PG"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
-          <select
-            value={formData.difficulty_level}
-            onChange={(e) => setFormData((p) => ({ ...p, difficulty_level: e.target.value }))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="EASY">EASY</option>
-            <option value="MODERATE">MODERATE</option>
-            <option value="HARD">HARD</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Teaching Style</label>
-          <select
-            value={formData.teaching_style}
-            onChange={(e) => setFormData((p) => ({ ...p, teaching_style: e.target.value }))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="PRACTICAL">PRACTICAL</option>
-            <option value="THEORITICAL">THEORITICAL</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Expected Pages</label>
-          <input
-            type="number"
-            min={1}
-            value={formData.expected_pages}
-            onChange={(e) => setFormData((p) => ({ ...p, expected_pages: e.target.value }))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Target Group</label>
-           <select
-            value={formData.teaching_style}
-            onChange={(e) => setFormData((p) => ({ ...p, target_group: e.target.value }))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="STUDENTS">STUDENTS</option>
-            <option value="PROFESSIONAL">PROFESSIONAL</option>
-          </select>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Step2AISettings({ formData, setFormData, uploadedFiles, textContent, toggleProc }) {
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">AI Processing Options</h2>
-        <p className="text-gray-600">Configure how AI will process and enhance your content</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">AI Model</label>
-          <select
-            value={formData.model_preference}
-            onChange={(e) => setFormData((p) => ({ ...p, model_preference: e.target.value }))}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="OPENAI">OPENAI 4o (Recommended)</option>
-            <option value="CLAUDE">CLAUDE</option>
-            <option value="GEMINI">GEMINI</option>
-          </select>
-          <p className="text-sm text-gray-500 mt-1">OPENAI provides a great balance of quality and speed</p>
-        </div>
-
-        <div className="space-y-4">
-          <h4 className="font-medium text-gray-900">Processing Features (UI only)</h4>
-
-          <label className="flex items-start space-x-3">
-            <input
-              type="checkbox"
-              checked={!!formData.processingOptions?.createQuestions}
-              onChange={() => toggleProc('createQuestions')}
-              className="mt-1"
-            />
-            <div>
-              <div className="font-medium">Create Q&A</div>
-              <div className="text-sm text-gray-600">Generate review questions and answers for each chapter</div>
-            </div>
-          </label>
-
-          <label className="flex items-start space-x-3">
-            <input
-              type="checkbox"
-              checked={!!formData.processingOptions?.addReferences}
-              onChange={() => toggleProc('addReferences')}
-              className="mt-1"
-            />
-            <div>
-              <div className="font-medium">Add References</div>
-              <div className="text-sm text-gray-600">Include relevant citations and reference materials</div>
-            </div>
-          </label>
-
-          <label className="flex items-start space-x-3">
-            <input
-              type="checkbox"
-              checked={!!formData.processingOptions?.improveContent}
-              onChange={() => toggleProc('improveContent')}
-              className="mt-1"
-            />
-            <div>
-              <div className="font-medium">Improve Content</div>
-              <div className="text-sm text-gray-600">Enhance readability and fix grammar issues</div>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h4 className="font-semibold text-blue-900 mb-3 flex items-center">
-          <Zap className="h-5 w-5 mr-2" />
-          Processing Preview
-        </h4>
-        <div className="text-sm text-blue-800 space-y-2">
-          <div className="flex items-center space-x-2">
-            <Target className="h-4 w-4" />
-            <span>Estimated processing time: 2–5 minutes</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <BookOpen className="h-4 w-4" />
-            <span>
-              Expected chapters:{' '}
-              {Math.ceil(
-                (textContent?.length ||
-                  uploadedFiles.reduce((acc, f) => acc + (f.content?.length || 0), 0)) / 2000
-              ) || 1}
-            </span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Clock className="h-4 w-4" />
-            <span>Reading time: {Math.ceil((textContent?.split(' ').length || 0) / 200) || 1} minutes</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Step3SyllabusInput({
-  subject, setSubject, bookId,
-  inputMethod, setInputMethod,
-  getRootProps, getInputProps, isDragActive,
-  uploadedFiles, removeFile, formatFileSize,
-  textContent, setTextContent,
-  onCreateSyllabus
-}) {
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">How would you like to add content?</h2>
-        <p className="text-gray-600">Choose your preferred method (Upload or Paste)</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Subject *</label>
-          <input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="e.g., Mathematics"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Book ID (created)</label>
-          <input
-            disabled
-            value={bookId ?? '—'}
-            className="w-full px-4 py-3 border border-gray-200 bg-gray-50 rounded-lg text-gray-600"
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <button
-          onClick={() => setInputMethod('paste')}
-          className={`p-6 rounded-lg border-2 transition-all ${
-            inputMethod === 'paste' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-          }`}
-        >
-          <Edit3 className="h-8 w-8 mx-auto mb-3 text-green-600" />
-          <h3 className="font-semibold mb-2">Paste Content</h3>
-          <p className="text-sm text-gray-600">Paste text directly into the editor</p>
-        </button>
-
-        <button
-          onClick={() => setInputMethod('upload')}
-          className={`p-6 rounded-lg border-2 transition-all ${
-            inputMethod === 'upload' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-          }`}
-        >
-          <Upload className="h-8 w-8 mx-auto mb-3 text-blue-600" />
-          <h3 className="font-semibold mb-2">Upload Files</h3>
-          <p className="text-sm text-gray-600">Upload PDF, DOCX, TXT, or MD files</p>
-        </button>
-      </div>
-
-      {inputMethod === 'upload' && (
-        <div className="space-y-4">
-          <div
-            {...getRootProps()}
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-              isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-            }`}
-          >
-            <input {...getInputProps()} />
-            <Upload className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-            <h3 className="text-lg font-semibold mb-2">
-              {isDragActive ? 'Drop files here' : 'Drag & drop files here'}
-            </h3>
-            <p className="text-gray-600 mb-4">or <span className="text-blue-600 font-medium">browse files</span></p>
-            <p className="text-sm text-gray-500">Supported: PDF, DOCX, TXT, MD • Max 50MB per file</p>
-          </div>
-
-          {uploadedFiles.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="font-medium text-gray-900">Uploaded Files ({uploadedFiles.length})</h4>
-              {uploadedFiles.map((file) => (
-                <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <FileText className="h-5 w-5 text-blue-600" />
-                    <div>
-                      <div className="font-medium">{file.file.name}</div>
-                      <div className="text-sm text-gray-500">{formatFileSize(file.size)}</div>
-                    </div>
-                  </div>
-                  <button onClick={() => removeFile(file.id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {inputMethod === 'paste' && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Paste your content here</label>
-          <textarea
-            rows={12}
-            value={textContent}
-            onChange={(e) => setTextContent(e.target.value)}
-            placeholder="Paste your syllabus, notes, or any text content here..."
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <div className="mt-2 text-sm text-gray-500">
-            {textContent.length.toLocaleString()} characters • {Math.ceil((textContent.split(' ').length || 0) / 250)} estimated pages
-          </div>
-        </div>
-      )}
-
-      {/* <div className="flex items-center justify-end">
-        <button
-          onClick={onCreateSyllabus}
-          className="flex items-center space-x-2 px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
-        >
-          <Sparkles className="h-4 w-4" />
-          <span>Create Syllabus</span>
-          <ArrowRight className="h-4 w-4" />
-        </button>
-      </div> */}
-    </div>
-  );
-}
-
-function Step4SyllabusReview({
-  isStreaming, processingStep, bookId, syllabusId,
-  syllabusDoc, setSyllabusDoc,
-  onSave, onFeedback, onApprove
-}) {
-  if (isStreaming) {
-    return (
-      <div className="space-y-6 text-center">
-        <div className="w-32 h-32 mx-auto bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center mb-4">
-          <Loader2 className="h-16 w-16 text-white animate-spin" />
-        </div>
-        <div className="text-gray-700 font-medium">{processingStep || 'Processing...'}</div>
-        <div className="text-xs text-gray-500 mt-1">Book ID: {bookId ?? '—'} • Syllabus ID: {syllabusId ?? '—'}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Syllabus Review & Refinement</h2>
-        <p className="text-gray-600">Edit the generated syllabus or regenerate using feedback</p>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onSave}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Save className="h-4 w-4" />
-          Save edited syllabus
-        </button>
-        <div className="ml-auto text-xs text-gray-500">
-          Book: {bookId ?? '—'} • Syllabus: {syllabusId ?? '—'}
-        </div>
-      </div>
-
-      {/* DOC-like editor */}
-      <div className="flex justify-center">
-        <div className="bg-white w-[816px] min-h-[1056px] shadow-[0_10px_30px_rgba(0,0,0,0.08)] rounded-[12px] border border-zinc-200">
-          <div className="px-[72px] py-[72px]">
-            <Editable
-              value={syllabusDoc.subject_name || ''}
-              placeholder="Untitled document"
-              onChange={(v) => setSyllabusDoc((p) => ({ ...p, subject_name: v }))}
-              className="text-[28px] leading-tight font-semibold text-zinc-900 mb-1"
-            />
-            <Editable
-              value={syllabusDoc.subject_description || ''}
-              placeholder="Add a short description…"
-              onChange={(v) => setSyllabusDoc((p) => ({ ...p, subject_description: v }))}
-              className="text-[15px] text-zinc-600 leading-relaxed mb-8"
-            />
-
-            <div className="space-y-8">
-              {(syllabusDoc.units ?? []).map((u, ui) => (
-                <div key={ui} className="group">
-                  <div className="flex items-baseline gap-3">
-                    <div className="text-[18px] font-semibold text-zinc-900">
-                      <Editable
-                        value={u.unit_name}
-                        placeholder={`Unit ${ui + 1}`}
-                        onChange={(v) => {
-                          setSyllabusDoc((p) => {
-                            const c = clone(p);
-                            c.units[ui].unit_name = v;
-                            return c;
-                          });
-                        }}
-                        className="inline-block"
-                      />
-                    </div>
-                    <div className="ml-auto">
-                      <div className="flex items-center gap-2">
-                        {/* <span className="text-xs text-zinc-500">Pages</span>
-                        <input
-                          type="number"
-                          value={u.number_of_pages ?? ''}
-                          onChange={(e) => {
-                            const v = e.target.value ? Number(e.target.value) : undefined;
-                            setSyllabusDoc((p) => {
-                              const c = clone(p);
-                              c.units[ui].number_of_pages = v;
-                              return c;
-                            });
-                          }}
-                          className="w-16 px-2 py-1 rounded-md border text-sm"
-                        /> */}
-                        <button
-                          onClick={() => {
-                            setSyllabusDoc((p) => {
-                              const c = clone(p);
-                              c.units.splice(ui, 1);
-                              return c;
-                            });
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-red-600 hover:bg-red-50 border border-red-200 px-2 py-1 rounded-md inline-flex items-center gap-1"
-                          title="Remove unit"
-                        >
-                          <Trash2 className="w-4 h-4" /> Remove
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <ol className="mt-3 list-decimal pl-6 space-y-2">
-                    {(u.lessons ?? []).map((l, li) => (
-                      <li key={li} className="relative pr-28">
-                        <div className="text-[15px] text-zinc-900 font-medium">
-                          <Editable
-                            value={l.lesson_name}
-                            placeholder={`Lesson ${li + 1}`}
-                            onChange={(v) => {
-                              setSyllabusDoc((p) => {
-                                const c = clone(p);
-                                c.units[ui].lessons[li].lesson_name = v;
-                                return c;
-                              });
-                            }}
-                          />
-                        </div>
-                        <div className="text-[14px] text-zinc-600">
-                          <Editable
-                            value={l.lesson_description ?? ''}
-                            placeholder="Add a short lesson description…"
-                            onChange={(v) => {
-                              setSyllabusDoc((p) => {
-                                const c = clone(p);
-                                c.units[ui].lessons[li].lesson_description = v;
-                                return c;
-                              });
-                            }}
-                          />
-                        </div>
-
-                        <div className="absolute top-0 right-0 flex items-center gap-2">
-                          {/* <input
-                            type="number"
-                            value={l.number_of_pages ?? ''}
-                            onChange={(e) => {
-                              const v = e.target.value ? Number(e.target.value) : undefined;
-                              setSyllabusDoc((p) => {
-                                const c = clone(p);
-                                c.units[ui].lessons[li].number_of_pages = v;
-                                return c;
-                              });
-                            }}
-                            className="w-14 px-2 py-1 rounded-md border text-sm"
-                            placeholder="pg"
-                            title="Pages"
-                          />
-                          <button
-                            onClick={() => {
-                              setSyllabusDoc((p) => {
-                                const c = clone(p);
-                                c.units[ui].lessons.splice(li, 1);
-                                return c;
-                              });
-                            }}
-                            className="text-red-600 hover:bg-red-50 border border-red-200 px-2 py-1 rounded-md"
-                            title="Remove lesson"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button> */}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-
-                  <button
-                    onClick={() =>
-                      setSyllabusDoc((p) => {
-                        const c = clone(p);
-                        const nextId = (u.lessons?.length ?? 0) + 1;
-                        c.units[ui].lessons.push({
-                          lesson_id: nextId,
-                          lesson_name: 'New lesson',
-                          number_of_pages: 2,
-                          lesson_description: '',
-                        });
-                        return c;
-                      })
-                    }
-                    className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-md border hover:bg-zinc-50 text-sm"
-                  >
-                    <Plus className="w-4 h-4" /> Add lesson
-                  </button>
-                </div>
-              ))}
-
-              <div>
-                <button
-                  onClick={() =>
-                    setSyllabusDoc((p) => {
-                      const c = clone(p);
-                      const nextId = (p.units?.length ?? 0) + 1;
-                      c.units.push({
-                        unit_id: nextId,
-                        unit_name: `Unit ${nextId}`,
-                        number_of_pages: 10,
-                        lessons: [],
-                      });
-                      return c;
-                    })
-                  }
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border hover:bg-zinc-50 text-sm"
-                >
-                  <Plus className="w-4 h-4" /> Add unit
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Feedback + Approve */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h4 className="font-semibold text-blue-900 mb-3 flex items-center">
-          <MessageSquare className="h-5 w-5 mr-2" />
-          Regenerate based on feedback
-        </h4>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="md:col-span-3">
-            <textarea
-              rows={3}
-              placeholder='e.g., "Increase the number of units, add more calculus examples"'
-              className="w-full px-4 py-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-              onChange={(e) => onFeedback(e.target.value)}
-            />
-          </div>
-          <div className="md:col-span-1 flex items-start gap-2">
-            <button
-              onClick={() => onFeedback('SEND')}
-              className="w-full h-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Send feedback & regenerate
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <button
-            onClick={onApprove}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-emerald-600 text-emerald-700 rounded-lg hover:bg-emerald-50"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Approve
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* --- helper: animated typing dots like ChatGPT --- */
-/* --- helper: animated typing dots like ChatGPT --- */
-function TypingDots() {
-  return (
-    <span className="inline-flex items-center gap-1 align-middle">
-      <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:-0.2s]" />
-      <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:-0.1s]" />
-      <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" />
-    </span>
-  );
-}
-
-function Step5Content({ isStreaming, processingStep, contentPhase, lessonProgress, contentJson }) {
-  const [openPayload, setOpenPayload] = useState(null);
-  // stable ordering by first-seen time
-  const lessonsArr = Object.values(lessonProgress || {}).sort(
-    (a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0)
-  );
-  const done   = lessonsArr.filter((l) => l.status === 'completed').length;
-  const failed = lessonsArr.filter((l) => l.status === 'failed').length;
-  const total  = lessonsArr.length;
-
-  const pillClass =
-    contentPhase.status === 'completed'
-      ? 'bg-emerald-100 text-emerald-700'
-      : contentPhase.status === 'failed'
-      ? 'bg-red-100 text-red-700'
-      : contentPhase.status === 'started'
-      ? 'bg-blue-100 text-blue-700'
-      : 'bg-gray-100 text-gray-700';
-
-  const SkeletonRow = () => (
-    <div className="px-4 py-3">
-      <div className="animate-pulse">
-        <div className="h-3 w-40 bg-gray-200 rounded mb-2" />
-        <div className="h-2.5 w-5/6 bg-gray-200 rounded mb-1.5" />
-        <div className="h-2.5 w-3/5 bg-gray-200 rounded" />
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-2">
-        <h2 className="text-2xl font-bold text-gray-900 mb-1">Generated Content</h2>
-        <p className="text-gray-600">Live updates via content websocket</p>
-      </div>
-
-      {/* Header card */}
-      <div className="w-full max-w-5xl mx-auto border rounded-2xl bg-white p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 text-white grid place-items-center">
-            <svg viewBox="0 0 24 24" className={`h-5 w-5 ${isStreaming ? 'animate-spin' : ''}`}>
-              <path fill="currentColor" d="M12 2a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Z" />
-            </svg>
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-sm text-gray-600">
-                {isStreaming ? (
-                  <span className="inline-flex items-center gap-2">
-                    Generating content <TypingDots />
-                  </span>
-                ) : (
-                  'Updates received'
-                )}
-              </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${pillClass}`}>
-                {contentPhase.status || 'IDLE'}
-              </span>
-            </div>
-
-            <div className="text-gray-900 font-medium truncate">
-              {contentPhase.message || processingStep || (isStreaming ? 'Preparing…' : 'Ready')}
-            </div>
-
-            {/* 👇 NEW: ETA line near the loader */}
-            {isStreaming && (
-              <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-                <Clock className="h-3.5 w-3.5" />
-                <span>ETA ~30–40 min</span>
-              </div>
-            )}
-
-            {total > 0 && (
-              <div className="mt-2 flex items-center gap-3">
-                <div className="h-1.5 bg-gray-200 rounded w-48 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all"
-                    style={{ width: `${Math.round((done / Math.max(total, 1)) * 100)}%` }}
-                  />
-                </div>
-                <span className="text-xs text-gray-500">{done}/{total} done{failed ? ` • ${failed} failed` : ''}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Lesson progress */}
-      <div className="w-full max-w-5xl mx-auto rounded-2xl border bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b bg-gray-50 font-semibold">Lesson progress</div>
-        <div className="divide-y">
-          {lessonsArr.length === 0 && (<><SkeletonRow /><SkeletonRow /><SkeletonRow /></>)}
-
-          {lessonsArr.map((l, idx) => (
-            <div key={idx} className="px-4 py-3 flex items-start gap-3">
-              <div className={`mt-1 shrink-0 w-2 h-2 rounded-full
-                ${l.status === 'completed' ? 'bg-emerald-500' :
-                  l.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'}`} />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-gray-900 truncate">{l.unit} — {l.lesson}</div>
-                <div className="text-sm text-gray-600">{l.message || (l.status === 'started' ? 'Generating…' : '')}</div>
-
-                {l.status === "completed" && l.data && (
-          <button
-            onClick={() => setOpenPayload(l.data)}
-            className="mt-2 text-sm text-blue-600 hover:underline"
-          >
-            View generated payload
-          </button>
-        )}
-              </div>
-              <span className="text-xs uppercase tracking-wide text-gray-500">{l.status}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-       <GeneratedPayloadModal
-    open={!!openPayload}
-    onClose={() => setOpenPayload(null)}
-    payload={openPayload}
-  />
-    </div>
-  );
-}
-
-
 
 /* ================== MAIN PAGE ================== */
 export default function CreateBookPage() {
@@ -883,7 +106,6 @@ const syncCompletedFromFlags = (bId, sId, approved) => {
   /* ---------- ids ---------- */
   const [bookId, setBookId] = useState(null);
   const [syllabusId, setSyllabusId] = useState(null);
-  const [contentId, setContentId] = useState(null); // from approve API or fallback
 
   /* ---------- book form ---------- */
   const [formData, setFormData] = useState({
@@ -896,7 +118,7 @@ const syncCompletedFromFlags = (bId, sId, approved) => {
   });
 
   /* ---------- syllabus state ---------- */
-  const [subject, setSubject] = useState('Mathematics');
+  const [subject, setSubject] = useState('');
   const [feedbackText, setFeedbackText] = useState('');
   const [syllabusDoc, setSyllabusDoc] = useState({ subject_name: '', subject_description: '', units: [] });
 
@@ -1135,45 +357,6 @@ useEffect(() => {
 }, []);
 
 
-  /* ---------- drag & drop ---------- */
-  const onDrop = useCallback((acceptedFiles) => {
-    acceptedFiles.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const newFile = {
-          id: Date.now() + Math.random(),
-          file,
-          content: e.target?.result,
-          size: file.size,
-          type: file.type,
-          status: 'ready',
-        };
-        setUploadedFiles((prev) => [...prev, newFile]);
-      };
-      if (file.type.startsWith('text/')) reader.readAsText(file);
-      else reader.readAsArrayBuffer(file);
-    });
-  }, []);
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'text/plain': ['.txt'],
-      'application/pdf': ['.pdf'],
-      'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'text/markdown': ['.md'],
-      'text/rtf': ['.rtf'],
-    },
-    maxSize: 50 * 1024 * 1024,
-    maxFiles: 10,
-  });
-  const removeFile = (fileId) => setUploadedFiles((prev) => prev.filter((f) => f.id !== fileId));
-  const formatFileSize = (bytes) => {
-    if (!bytes) return '0 Bytes';
-    const k = 1024; const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
 
   /* ================== VALIDATION & NAV ================== */
   const validateStep = (step) => {
@@ -1259,18 +442,43 @@ const pushIdsToUrl = (bId, sId, extra = {}) => {
   };
 
   const createSyllabus = async () => {
-    if (!validateStep(3)) return;
-    try {
-      const data = await jfetch('/api/syllabi/', {
+  if (!validateStep(3)) return;
+
+  try {
+    // ----- Upload path -> multipart/form-data -----
+    if (inputMethod === 'upload' && uploadedFiles.length > 0) {
+      if (uploadedFiles.length > 1) {
+        toast((t) => (
+          <span>Multiple files selected — uploading the first one only.</span>
+        ));
+      }
+
+      const fd = new FormData();
+      fd.append('book', String(bookId));
+      fd.append('syllabus_type', 'FILE');
+      fd.append('subject', subject || 'Subject');
+      fd.append('input_syllabus_file', uploadedFiles[0].file); // <-- exact field name
+
+      const res = await fetch(`${API_BASE}/api/syllabi/`, {
         method: 'POST',
-        body: { book: Number(bookId), syllabus_type: 'TEXT', subject: subject || 'Subject' },
+        body: fd,                // <-- DO NOT set Content-Type; browser sets boundary
+        credentials: 'include',
+        cache: 'no-store',
       });
-      const newId = data?.data?.id;
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
+      }
+
+      const data = await res.json().catch(() => ({}));
+      const newId = data?.data?.id ?? data?.id;
       if (!newId) throw new Error('Missing syllabus id in response');
+
       setSyllabusId(newId);
       pushIdsToUrl(bookId, newId);
 
-      // Bootstrap: check current state once
+      // Bootstrap once
       try {
         const d = await jfetch(`/api/syllabi/${newId}/`, { method: 'GET' });
         const json = pickSyllabusPayload(d);
@@ -1278,15 +486,47 @@ const pushIdsToUrl = (bId, sId, extra = {}) => {
         else setIsSyllabusStreaming(true);
       } catch {}
 
-      // Live
       openSyllabusSocket(newId);
-      toast.success('Syllabus creation started');
+      toast.success('Syllabus upload started');
       setCurrentStep(4);
       setCompletedSteps((prev) => new Set([...prev, 3]));
-    } catch (e) {
-      setErrors([`Syllabus creation failed: ${e.message}`]);
+      return;
     }
-  };
+
+    // ----- Paste path -> JSON -----
+    const data = await jfetch('/api/syllabi/', {
+      method: 'POST',
+      body: {
+        book: Number(bookId),
+        syllabus_type: 'TEXT',
+        subject: subject || 'Subject',
+        input_syllabus_text: textContent || '', // backend can read this if needed
+      },
+    });
+
+    const newId = data?.data?.id ?? data?.id;
+    if (!newId) throw new Error('Missing syllabus id in response');
+
+    setSyllabusId(newId);
+    pushIdsToUrl(bookId, newId);
+
+    // Bootstrap once
+    try {
+      const d = await jfetch(`/api/syllabi/${newId}/`, { method: 'GET' });
+      const json = pickSyllabusPayload(d);
+      if (json) setSyllabusDoc(normalizeSyllabus(d));
+      else setIsSyllabusStreaming(true);
+    } catch {}
+
+    openSyllabusSocket(newId);
+    toast.success('Syllabus creation started');
+    setCurrentStep(4);
+    setCompletedSteps((prev) => new Set([...prev, 3]));
+  } catch (e) {
+    setErrors([`Syllabus creation failed: ${e.message}`]);
+  }
+};
+
 
   const saveEditedSyllabus = async () => {
     if (!syllabusId) return setErrors(['No syllabus to update.']);
@@ -1346,15 +586,10 @@ const pushIdsToUrl = (bId, sId, extra = {}) => {
   }
 };
 
-  const toggleProc = (key) =>
-    setFormData((prev) => ({
-      ...prev,
-      processingOptions: { ...prev.processingOptions, [key]: !prev.processingOptions?.[key] },
-    }));
 
   /* ================== RENDER ================== */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 overflow-y-auto">
+    <div className="min-h-screen overflow-y-auto">
       <Toaster position="bottom-center" />
       <div className="max-w-6xl mx-auto p-6">
         {/* Header */}
@@ -1431,7 +666,6 @@ const pushIdsToUrl = (bId, sId, extra = {}) => {
               setFormData={setFormData}
               uploadedFiles={uploadedFiles}
               textContent={textContent}
-              toggleProc={toggleProc}
             />
           )}
 
@@ -1439,10 +673,9 @@ const pushIdsToUrl = (bId, sId, extra = {}) => {
             <Step3SyllabusInput
               subject={subject} setSubject={setSubject} bookId={bookId}
               inputMethod={inputMethod} setInputMethod={setInputMethod}
-              getRootProps={getRootProps} getInputProps={getInputProps} isDragActive={isDragActive}
-              uploadedFiles={uploadedFiles} removeFile={removeFile} formatFileSize={formatFileSize}
+              uploadedFiles={uploadedFiles}
               textContent={textContent} setTextContent={setTextContent}
-              onCreateSyllabus={createSyllabus}
+              setUploadedFiles={setUploadedFiles}
             />
           )}
 

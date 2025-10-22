@@ -3,12 +3,7 @@
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
-// import MarkdownRenderer from "./MarkdownRenderer";
-
-// example usage file
-import dynamic from "next/dynamic";
-const MarkdownRenderer = dynamic(() => import("@/components/MarkdownRenderer"), { ssr: false });
-
+import TextFormat from "./format/TextFormat";
 
 export default function GeneratedPayloadModal({ open, onClose, payload }) {
   if (!open) return null;
@@ -46,30 +41,28 @@ export default function GeneratedPayloadModal({ open, onClose, payload }) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-6 space-y-8">
-          {/* Summary */}
-          <section>
-            <h4 className="text-base font-semibold mb-2">Summary</h4>
+        <div className="px-6 py-6">
+          {summary ? <TextFormat data={summary} /> : <p>—</p>}
+          {content ? <TextFormat data={content} /> : <p>—</p>}
+          {question ? <TextFormat data={question} /> : <p>—</p>}
+
+          {/* <section>
             <div className="prose prose-slate max-w-none">
-              {summary ? <MarkdownRenderer content={summary} /> : <p>—</p>}
+              {summary ? <TextFormat data={summary} /> : <p>—</p>}
             </div>
           </section>
 
-          {/* Main Content */}
           <section>
-            <h4 className="text-base font-semibold mb-2">Main Content</h4>
             <div className="prose prose-slate max-w-none">
-              {content ? <MarkdownRenderer content={content} /> : <p>—</p>}
+              {content ? <TextFormat data={content} /> : <p>—</p>}
             </div>
           </section>
-
-          {/* Questions */}
+          
           <section>
-            <h4 className="text-base font-semibold mb-2">Questions</h4>
             <div className="prose prose-slate max-w-none">
-              {question ? <MarkdownRenderer content={question} /> : <p>—</p>}
+              {question ? <TextFormat data={question} /> : <p>—</p>}
             </div>
-          </section>
+          </section> */}
         </div>
       </div>
     </div>
