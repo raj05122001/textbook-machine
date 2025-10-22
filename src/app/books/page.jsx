@@ -40,6 +40,11 @@ export default function BooksLibraryPage() {
           createdAt: b.created_at,
           lastModified: b.updated_at,
           chapters: chaptersFromUnits(b.syllabus?.syllabus_json?.units),
+          educational_level: b.educational_level,
+          difficulty_level: b.difficulty_level,
+          target_group: b.target_group,
+          description: b.description,
+          category: b.category,
         });
 
         const list = Array.isArray(data?.data) ? data.data.map(toUi) : [];
