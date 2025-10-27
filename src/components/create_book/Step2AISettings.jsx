@@ -82,7 +82,7 @@ export function Step2AISettings({
             </div>
           </label>
 
-          <label className="flex items-start space-x-3">
+          {/* <label className="flex items-start space-x-3">
             <input
               type="checkbox"
               checked={!!formData.processingOptions?.improveContent}
@@ -95,7 +95,7 @@ export function Step2AISettings({
                 Enhance readability and fix grammar issues
               </div>
             </div>
-          </label>
+          </label> */}
         </div>
       </div>
 
