@@ -2,6 +2,18 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import "katex/dist/katex.min.css";
 
+function decodeBasicEntities(s) {
+  if (!s) return "";
+  // Handle double-encoded cases like &amp;lt; -> &lt; first
+  s = s.replace(/&amp;(lt|gt|amp|quot|#39);/gi, '&$1;');
+  return s
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/gi, '&');
+}
+
 /* -------------------- helpers -------------------- */
 function _escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -79,6 +91,7 @@ function markdownToHtml(src) {
   if (!src) return "";
   // 0) fix double-escaped input
   let s = softDecodeEscapes(String(src));
+  s = decodeBasicEntities(s);
 
   // let s = String(src).replace(/\r\n?/g, "\n");
 
