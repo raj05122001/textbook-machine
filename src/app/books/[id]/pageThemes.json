@@ -28,8 +28,8 @@
     },
     "theme4": {
         "id": "corner-curves",
-        "page_bg": "#f97316",
-        "text": "#FFF",
+        "page_bg": "#FFF",
+        "text": "#000",
         "accent": "#f97316",
         "accent2": "#fde68a",
         "header": "<div style='position:relative;height:80px'><div style='position:absolute;left:0;top:0;width:220px;height:80px;background:#f97316;border-bottom-right-radius:80px'></div><div style='position:absolute;right:0;top:0;width:140px;height:80px;background:#fde68a;border-bottom-left-radius:80px'></div></div>",

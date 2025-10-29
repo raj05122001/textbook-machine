@@ -4,16 +4,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  BookOpen, 
-  Library, 
-  Search, 
-  Filter, 
-  Grid3X3, 
-  List, 
-  Star, 
-  Clock, 
-  User, 
+import {
+  BookOpen,
+  Library,
+  Search,
+  Filter,
+  Grid3X3,
+  List,
+  Star,
+  Clock,
+  User,
   Calendar,
   Tag,
   Eye,
@@ -453,13 +453,13 @@ const sortOptions = [
 
 const SecondaryLibraryPage = () => {
   const router = useRouter();
-  
+
   // Core state
   const [libraryData, setLibraryData] = useState(secondaryLibraryData);
   const [filteredBooks, setFilteredBooks] = useState(secondaryLibraryData.books);
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
   const [currentView, setCurrentView] = useState('featured'); // 'featured' | 'all' | 'categories' | 'institutions'
-  
+
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -471,7 +471,7 @@ const SecondaryLibraryPage = () => {
   const [showVerifiedOnly, setShowVerifiedOnly] = useState(false);
   const [sortBy, setSortBy] = useState('relevance');
   const [sortOrder, setSortOrder] = useState('desc');
-  
+
   // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -479,21 +479,21 @@ const SecondaryLibraryPage = () => {
   const [selectedBooks, setSelectedBooks] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const booksPerPage = 12;
-  
+
   // Refs
   const dropdownRef = useRef(null);
 
   // Filter and search books
   useEffect(() => {
     let filtered = libraryData.books.filter(book => {
-      const searchMatch = searchQuery === '' || 
+      const searchMatch = searchQuery === '' ||
         book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         book.subtitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
         book.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
         book.institution.toLowerCase().includes(searchQuery.toLowerCase()) ||
         book.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         book.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-      
+
       const categoryMatch = selectedCategory === 'all' || book.category === selectedCategory;
       const institutionMatch = selectedInstitution === 'all' || book.institution.toLowerCase().includes(selectedInstitution.toLowerCase());
       const difficultyMatch = selectedDifficulty === 'all' || book.difficulty === selectedDifficulty;
@@ -501,26 +501,26 @@ const SecondaryLibraryPage = () => {
       const premiumMatch = !showPremiumOnly || book.premium;
       const openAccessMatch = !showOpenAccessOnly || book.openAccess;
       const verifiedMatch = !showVerifiedOnly || book.verified;
-      
-      return searchMatch && categoryMatch && institutionMatch && difficultyMatch && 
-             languageMatch && premiumMatch && openAccessMatch && verifiedMatch;
+
+      return searchMatch && categoryMatch && institutionMatch && difficultyMatch &&
+        languageMatch && premiumMatch && openAccessMatch && verifiedMatch;
     });
 
     // Sort books
     filtered.sort((a, b) => {
       let aValue = a[sortBy];
       let bValue = b[sortBy];
-      
+
       if (sortBy === 'publishedDate') {
         aValue = new Date(aValue);
         bValue = new Date(bValue);
       }
-      
+
       if (typeof aValue === 'string') {
         aValue = aValue.toLowerCase();
         bValue = bValue.toLowerCase();
       }
-      
+
       if (sortOrder === 'asc') {
         return aValue > bValue ? 1 : -1;
       } else {
@@ -530,8 +530,8 @@ const SecondaryLibraryPage = () => {
 
     setFilteredBooks(filtered);
     setCurrentPage(1);
-  }, [libraryData.books, searchQuery, selectedCategory, selectedInstitution, selectedDifficulty, 
-      selectedLanguage, showPremiumOnly, showOpenAccessOnly, showVerifiedOnly, sortBy, sortOrder]);
+  }, [libraryData.books, searchQuery, selectedCategory, selectedInstitution, selectedDifficulty,
+    selectedLanguage, showPremiumOnly, showOpenAccessOnly, showVerifiedOnly, sortBy, sortOrder]);
 
   // Pagination
   const totalPages = Math.ceil(filteredBooks.length / booksPerPage);
@@ -563,11 +563,11 @@ const SecondaryLibraryPage = () => {
       // Update download count
       setLibraryData(prev => ({
         ...prev,
-        books: prev.books.map(b => 
+        books: prev.books.map(b =>
           b.id === bookId ? { ...b, downloads: b.downloads + 1 } : b
         )
       }));
-      
+
       console.log(`Downloading ${book.title} as ${format}`);
     }
   };
@@ -583,8 +583,8 @@ const SecondaryLibraryPage = () => {
   const handleBookmark = (bookId) => {
     setLibraryData(prev => ({
       ...prev,
-      books: prev.books.map(book => 
-        book.id === bookId 
+      books: prev.books.map(book =>
+        book.id === bookId
           ? { ...book, bookmarks: book.bookmarks + 1 }
           : book
       )
@@ -629,7 +629,7 @@ const SecondaryLibraryPage = () => {
               <Link href="/library" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <ArrowLeft className="h-5 w-5" />
               </Link>
-              
+
               <div className="flex items-center space-x-3">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-2 rounded-lg">
                   <Building2 className="h-6 w-6 text-white" />
@@ -665,7 +665,7 @@ const SecondaryLibraryPage = () => {
             {/* Right section */}
             <div className="flex items-center space-x-3">
 
-<Link 
+              <Link
                 href="/library/primary"
                 className="text-blue-600 hover:text-blue-700 px-4 py-2 rounded-lg border border-blue-300 hover:bg-blue-50 transition-colors"
               >
@@ -795,9 +795,9 @@ const SecondaryLibraryPage = () => {
                 <p className="text-2xl font-bold text-gray-900">{libraryData.stats.averageRating}</p>
                 <div className="flex items-center mt-1">
                   {[1, 2, 3, 4, 5].map((star) => (
-                    <Star 
-                      key={star} 
-                      className={`h-3 w-3 ${star <= Math.floor(libraryData.stats.averageRating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} 
+                    <Star
+                      key={star}
+                      className={`h-3 w-3 ${star <= Math.floor(libraryData.stats.averageRating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
                     />
                   ))}
                 </div>
@@ -820,11 +820,10 @@ const SecondaryLibraryPage = () => {
             <button
               key={id}
               onClick={() => setCurrentView(id)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                currentView === id
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${currentView === id
+                ? 'bg-blue-100 text-blue-700'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
             >
               <Icon className="h-4 w-4" />
               <span>{label}</span>
@@ -839,7 +838,7 @@ const SecondaryLibraryPage = () => {
               <h2 className="text-lg font-semibold text-gray-900">Featured Collections</h2>
               <span className="text-sm text-gray-500">Curated by leading institutions</span>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {libraryData.featuredCollections.map((collection) => (
                 <div
@@ -948,7 +947,7 @@ const SecondaryLibraryPage = () => {
                 View All Books
               </button>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
               {libraryData.categories.map((category) => (
                 <button
@@ -984,7 +983,7 @@ const SecondaryLibraryPage = () => {
                 View All Books
               </button>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {libraryData.institutions.map((institution) => {
                 const TierIcon = institutionTiers[institution.tier]?.icon || School;
@@ -1017,17 +1016,16 @@ const SecondaryLibraryPage = () => {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-2xl font-bold text-gray-900">{institution.bookCount}</p>
                         <p className="text-sm text-gray-500">Books Published</p>
                       </div>
-                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        institution.tier === 'premium' ? 'bg-purple-100 text-purple-800' :
+                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${institution.tier === 'premium' ? 'bg-purple-100 text-purple-800' :
                         institution.tier === 'standard' ? 'bg-blue-100 text-blue-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
+                          'bg-green-100 text-green-800'
+                        }`}>
                         {institutionTiers[institution.tier]?.label}
                       </div>
                     </div>
@@ -1070,11 +1068,10 @@ const SecondaryLibraryPage = () => {
               <div className="flex items-center space-x-4">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${
-                    showFilters 
-                      ? 'bg-blue-50 border-blue-200 text-blue-700' 
-                      : 'bg-white border-gray-300 hover:bg-gray-50'
-                  }`}
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors ${showFilters
+                    ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : 'bg-white border-gray-300 hover:bg-gray-50'
+                    }`}
                 >
                   <Filter className="h-4 w-4" />
                   <span>Filters</span>
@@ -1084,33 +1081,30 @@ const SecondaryLibraryPage = () => {
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setShowVerifiedOnly(!showVerifiedOnly)}
-                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                      showVerifiedOnly
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${showVerifiedOnly
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
                   >
                     <Verified className="h-3 w-3 mr-1 inline" />
                     Verified Only
                   </button>
                   <button
                     onClick={() => setShowOpenAccessOnly(!showOpenAccessOnly)}
-                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                      showOpenAccessOnly
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${showOpenAccessOnly
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
                   >
                     <Unlock className="h-3 w-3 mr-1 inline" />
                     Open Access
                   </button>
                   <button
                     onClick={() => setShowPremiumOnly(!showPremiumOnly)}
-                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                      showPremiumOnly
-                        ? 'bg-purple-100 text-purple-800'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${showPremiumOnly
+                      ? 'bg-purple-100 text-purple-800'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
                   >
                     <Crown className="h-3 w-3 mr-1 inline" />
                     Premium
@@ -1133,7 +1127,7 @@ const SecondaryLibraryPage = () => {
                     <span className="text-sm">Sort: {sortOptions.find(opt => opt.key === sortBy)?.label}</span>
                     <ChevronDown className="h-4 w-4" />
                   </button>
-                  
+
                   {activeDropdown === 'sort' && (
                     <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
                       <div className="py-1">
@@ -1144,9 +1138,8 @@ const SecondaryLibraryPage = () => {
                               setSortBy(key);
                               setActiveDropdown(null);
                             }}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${
-                              sortBy === key ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-                            }`}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${sortBy === key ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                              }`}
                           >
                             {label}
                           </button>
@@ -1160,21 +1153,19 @@ const SecondaryLibraryPage = () => {
                 <div className="flex items-center bg-white border border-gray-300 rounded-lg">
                   <button
                     onClick={() => setViewMode('grid')}
-                    className={`p-2 rounded-l-lg transition-colors ${
-                      viewMode === 'grid' 
-                        ? 'bg-blue-100 text-blue-700' 
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
+                    className={`p-2 rounded-l-lg transition-colors ${viewMode === 'grid'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                      }`}
                   >
                     <Grid3X3 className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setViewMode('list')}
-                    className={`p-2 rounded-r-lg transition-colors ${
-                      viewMode === 'list' 
-                        ? 'bg-blue-100 text-blue-700' 
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
+                    className={`p-2 rounded-r-lg transition-colors ${viewMode === 'list'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-500 hover:text-gray-700'
+                      }`}
                   >
                     <List className="h-4 w-4" />
                   </button>
@@ -1201,7 +1192,7 @@ const SecondaryLibraryPage = () => {
                       <option value="Chinese">Chinese</option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Publication Year</label>
                     <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
@@ -1212,7 +1203,7 @@ const SecondaryLibraryPage = () => {
                       <option value="older">Older</option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">License</label>
                     <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
@@ -1223,7 +1214,7 @@ const SecondaryLibraryPage = () => {
                       <option value="all-rights">All Rights Reserved</option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Page Count</label>
                     <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
@@ -1233,7 +1224,7 @@ const SecondaryLibraryPage = () => {
                       <option value="long">&gt; 500 pages</option>
                     </select>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Format</label>
                     <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
@@ -1286,28 +1277,9 @@ const SecondaryLibraryPage = () => {
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />
                           <div className="absolute inset-0 bg-black bg-opacity-20 group-hover:bg-opacity-10 transition-all duration-300"></div>
-                          
+
                           {/* Badges */}
-                          <div className="absolute top-3 left-3 flex flex-wrap gap-1">
-                            {book.verified && (
-                              <span className="px-2 py-1 bg-blue-500 text-white text-xs font-medium rounded-full flex items-center">
-                                <Verified className="h-3 w-3 mr-1" />
-                                Verified
-                              </span>
-                            )}
-                            {book.premium && (
-                              <span className="px-2 py-1 bg-purple-500 text-white text-xs font-medium rounded-full flex items-center">
-                                <Crown className="h-3 w-3 mr-1" />
-                                Premium
-                              </span>
-                            )}
-                            {book.openAccess && (
-                              <span className="px-2 py-1 bg-green-500 text-white text-xs font-medium rounded-full flex items-center">
-                                <Unlock className="h-3 w-3 mr-1" />
-                                Open
-                              </span>
-                            )}
-                          </div>
+
 
                           {/* Institution */}
                           <div className="absolute top-3 right-3 bg-white bg-opacity-90 px-2 py-1 rounded-full">
@@ -1315,10 +1287,34 @@ const SecondaryLibraryPage = () => {
                           </div>
 
                           {/* Rating */}
-                          <div className="absolute bottom-3 left-3 flex items-center space-x-1 bg-white bg-opacity-90 px-2 py-1 rounded-full">
-                            <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                            <span className="text-xs font-medium text-gray-700">{book.rating}</span>
+                          <div className="absolute bottom-3 left-3 flex items-center gap-1 flex-nowrap">
+                            {/* Rating */}
+                            <span className="inline-flex items-center bg-white/90 px-2 py-1 rounded-full">
+                              <Star className="h-3 w-3 text-yellow-400 fill-current mr-1" />
+                              <span className="text-xs font-medium text-gray-700">{book.rating}</span>
+                            </span>
+
+                            {/* Badges */}
+                            {book.verified && (
+                              <span className="inline-flex items-center px-2 py-1 bg-blue-500 text-white text-xs font-medium rounded-full">
+                                <Verified className="h-3 w-3 mr-1" />
+                                Verified
+                              </span>
+                            )}
+                            {book.premium && (
+                              <span className="inline-flex items-center px-2 py-1 bg-purple-500 text-white text-xs font-medium rounded-full">
+                                <Crown className="h-3 w-3 mr-1" />
+                                Premium
+                              </span>
+                            )}
+                            {book.openAccess && (
+                              <span className="inline-flex items-center px-2 py-1 bg-green-500 text-white text-xs font-medium rounded-full">
+                                <Unlock className="h-3 w-3 mr-1" />
+                                Open
+                              </span>
+                            )}
                           </div>
+
                         </div>
 
                         {/* Content */}
@@ -1349,11 +1345,10 @@ const SecondaryLibraryPage = () => {
                               {Array.from({ length: 3 }).map((_, i) => (
                                 <div
                                   key={i}
-                                  className={`w-1.5 h-1.5 rounded-full ${
-                                    i < difficultyConfig[book.difficulty].dots
-                                      ? difficultyConfig[book.difficulty].color.replace('text-', 'bg-')
-                                      : 'bg-gray-200'
-                                  }`}
+                                  className={`w-1.5 h-1.5 rounded-full ${i < difficultyConfig[book.difficulty].dots
+                                    ? difficultyConfig[book.difficulty].color.replace('text-', 'bg-')
+                                    : 'bg-gray-200'
+                                    }`}
                                 />
                               ))}
                             </span>
@@ -1414,7 +1409,7 @@ const SecondaryLibraryPage = () => {
                               >
                                 <MoreVertical className="h-4 w-4" />
                               </button>
-                              
+
                               {activeDropdown === `book-${book.id}` && (
                                 <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
                                   <div className="py-1">
@@ -1564,11 +1559,10 @@ const SecondaryLibraryPage = () => {
                                     {Array.from({ length: 3 }).map((_, i) => (
                                       <div
                                         key={i}
-                                        className={`w-2 h-2 rounded-full ${
-                                          i < difficultyConfig[book.difficulty].dots
-                                            ? difficultyConfig[book.difficulty].color.replace('text-', 'bg-')
-                                            : 'bg-gray-200'
-                                        }`}
+                                        className={`w-2 h-2 rounded-full ${i < difficultyConfig[book.difficulty].dots
+                                          ? difficultyConfig[book.difficulty].color.replace('text-', 'bg-')
+                                          : 'bg-gray-200'
+                                          }`}
                                       />
                                     ))}
                                   </div>
@@ -1595,7 +1589,7 @@ const SecondaryLibraryPage = () => {
                                       >
                                         <MoreVertical className="h-4 w-4" />
                                       </button>
-                                      
+
                                       {activeDropdown === `book-list-${book.id}` && (
                                         <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
                                           <div className="py-1">
@@ -1691,11 +1685,10 @@ const SecondaryLibraryPage = () => {
                     <button
                       onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
-                      className={`px-3 py-2 rounded-lg border transition-colors ${
-                        currentPage === 1
-                          ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                          : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
+                      className={`px-3 py-2 rounded-lg border transition-colors ${currentPage === 1
+                        ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
                     >
                       Previous
                     </button>
@@ -1717,11 +1710,10 @@ const SecondaryLibraryPage = () => {
                         <button
                           key={pageNum}
                           onClick={() => setCurrentPage(pageNum)}
-                          className={`px-3 py-2 rounded-lg border transition-colors ${
-                            currentPage === pageNum
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                          }`}
+                          className={`px-3 py-2 rounded-lg border transition-colors ${currentPage === pageNum
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                            }`}
                         >
                           {pageNum}
                         </button>
@@ -1731,11 +1723,10 @@ const SecondaryLibraryPage = () => {
                     <button
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}
-                      className={`px-3 py-2 rounded-lg border transition-colors ${
-                        currentPage === totalPages
-                          ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                          : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
+                      className={`px-3 py-2 rounded-lg border transition-colors ${currentPage === totalPages
+                        ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
                     >
                       Next
                     </button>

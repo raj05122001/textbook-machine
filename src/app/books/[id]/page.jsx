@@ -364,8 +364,8 @@ function blocksFromLesson(lesson) {
     Array.isArray(lesson?.contents) && lesson.contents.length
       ? lesson.contents
       : lesson?.contents && typeof lesson.contents === "object"
-      ? [lesson.contents]
-      : [lesson];
+        ? [lesson.contents]
+        : [lesson];
 
   const blocks = [];
   items.forEach((it) => {
@@ -376,9 +376,9 @@ function blocksFromLesson(lesson) {
       "content.content_summary",
     ]);
     const quesVal = pickFirst(it, ["questions", "content.questions"]);
-    const text = textVal ? `${String(textVal).trim()}` : "";
+    const text = textVal ? `\n${String(textVal).trim()}` : "";
     const summary = summaryVal
-      ? `#### Content Summary\n\n${String(summaryVal).trim()}`
+      ? `\n#### Content Summary\n\n${String(summaryVal).trim()}`
       : "";
 
     const qRaw = normalizeQuestions(quesVal);
@@ -471,7 +471,7 @@ function bookToPagesWithTheme(book, theme) {
     Array.isArray(book?.units) && book.units.length
       ? book.units
       : Array.isArray(sj?.units)
-      ? sj.units.map((u) => ({
+        ? sj.units.map((u) => ({
           title: u.title,
           number_of_pages: u.number_of_pages,
           description: u.description || "",
@@ -482,7 +482,7 @@ function bookToPagesWithTheme(book, theme) {
             text: l.contents?.text,
           })),
         }))
-      : [];
+        : [];
 
   let pageCounter = 1;
   const className =
@@ -616,16 +616,15 @@ function bookToPagesWithTheme(book, theme) {
         </tr>
       </thead>
       <tbody>
-        ${
-          tocRows ||
-          `
+        ${tocRows ||
+    `
           <tr>
             <td colspan="3" style="padding:16px 12px;color:#64748b;text-align:center;border-top:1px dashed #e5e7eb;">
               No units available
             </td>
           </tr>
         `
-        }
+    }
       </tbody>
     </table>
   </div>
@@ -684,13 +683,12 @@ function bookToPagesWithTheme(book, theme) {
         <h1 style="margin:0 0 10px 0;font-size:2.5rem;font-weight:800;letter-spacing:.2px;color:${text};">
           ${_escapeHtml(uTitle)}
         </h1>
-        ${
-          uDesc
-            ? `<p style="margin:14px auto 0;max-width:720px;color:${text};line-height:1.7;">
+        ${uDesc
+        ? `<p style="margin:14px auto 0;max-width:720px;color:${text};line-height:1.7;">
                  ${_escapeHtml(uDesc)}
                </p>`
-            : ``
-        }
+        : ``
+      }
       </div>
     </section>`,
 
@@ -715,12 +713,12 @@ function bookToPagesWithTheme(book, theme) {
           const titleTop =
             bi === 0
               ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(
-                  uTitle
-                )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
+                uTitle
+              )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
        <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
               : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(
-                  lTitle
-                )} — Page ${bi + 1}</h3>`;
+                lTitle
+              )} — Page ${bi + 1}</h3>`;
 
           const safeHtml = stripScripts(b);
 
@@ -731,8 +729,8 @@ function bookToPagesWithTheme(book, theme) {
       } else {
         const body = `
           <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(
-            uTitle
-          )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
+          uTitle
+        )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
           <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
           <div style="color:${text}"><em>No content available yet.</em></div>`;
         wrap(body, { unit: uTitle, title: lTitle });
@@ -813,8 +811,10 @@ function ThemePanel({
           color: "#334155",
         }}
       >
-        <span style={{ fontWeight: 700 }}>Choose image (2480 x 3508)</span>
+        <span style={{ fontWeight: 700 }}>Choose Cover page (2480 x 3508)</span>
+
         <input
+          id="cover-file"
           type="file"
           accept="image/*"
           onChange={(e) => {
@@ -822,16 +822,40 @@ function ThemePanel({
             if (file && onPickImage) onPickImage(file);
           }}
           style={{
-            height: 36,
-            borderRadius: 8,
-            border: "1px solid #e2e8f0",
-            padding: "6px 10px",
-            background: "#fff",
-            color: "#0f172a",
+            position: "absolute",
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: "hidden",
+            clip: "rect(0, 0, 0, 0)",
+            whiteSpace: "nowrap",
+            border: 0,
           }}
           title="Select an image to show on top"
         />
+
+        <button
+          type="button"
+          onClick={() => document.getElementById("cover-file")?.click()}
+          style={{
+            height: 36,
+            borderRadius: 8,
+            border: "1px solid #e2e8f0",
+            padding: "6px 12px",
+            background: "#fff",
+            color: "#0f172a",
+            cursor: "pointer",
+            fontWeight: 600,
+            justifySelf: "start",
+            width: "100%", 
+          }}
+          aria-label="Choose cover page"
+        >
+          Choose Cover page
+        </button>
       </label>
+
 
       <label
         style={{
@@ -847,6 +871,7 @@ function ThemePanel({
           value={selectedThemeKey}
           onChange={(e) => setSelectedThemeKey(e.target.value)}
           style={{
+                        width: "100%", 
             height: 36,
             borderRadius: 8,
             border: "1px solid #e2e8f0",
@@ -1236,9 +1261,9 @@ function EditorPanel({ onClose }) {
     const range = sel.getRangeAt(0);
     const root = range.startContainer
       ? (range.startContainer.nodeType === 1
-          ? range.startContainer
-          : range.startContainer.parentElement
-        )?.closest('[data-editable="true"]')
+        ? range.startContainer
+        : range.startContainer.parentElement
+      )?.closest('[data-editable="true"]')
       : null;
     if (root) {
       lastRangeRef.current = range.cloneRange();
@@ -1256,7 +1281,7 @@ function EditorPanel({ onClose }) {
       sel.addRange(range);
       lastRangeRef.current = range.cloneRange();
       lastEditableElRef.current = el;
-    } catch {}
+    } catch { }
   }
 
   // maintain object URL cleanup
@@ -1343,7 +1368,7 @@ function EditorPanel({ onClose }) {
       document.execCommand(command, false, value);
       const active = document.querySelector('[data-editable="true"]');
       if (active) active.focus();
-    } catch {}
+    } catch { }
   }
 
   function makeLink() {
@@ -1493,10 +1518,10 @@ function EditorPanel({ onClose }) {
     setOverlayRect((rect) =>
       rect
         ? {
-            ...rect,
-            left: s.startLeft + dx,
-            top: s.startTop + dy,
-          }
+          ...rect,
+          left: s.startLeft + dx,
+          top: s.startTop + dy,
+        }
         : rect
     );
   }
@@ -1782,10 +1807,10 @@ function DocView({
   fontSize = 16,
   deviceDimensions = { width: 720, height: 520 },
   theme = null,
-  onPageInView = () => {},
+  onPageInView = () => { },
   editable = false,
   imageUrl = null,
-  onImageClick = () => {},
+  onImageClick = () => { },
 }) {
   const pageWidth = Math.min(deviceDimensions.width, 860);
   const pageMinHeight = Math.max(deviceDimensions.height, 980);
@@ -2420,16 +2445,14 @@ export default function BookDetailsPage() {
                                     textAlign: "left",
                                     cursor: "pointer",
                                     fontSize: 12,
-                                    border: `1px solid ${
-                                      isActive
+                                    border: `1px solid ${isActive
                                         ? effectiveTheme?.accent || "#2563eb"
                                         : "#e5e7eb"
-                                    }`,
-                                    borderLeft: `6px solid ${
-                                      isActive
+                                      }`,
+                                    borderLeft: `6px solid ${isActive
                                         ? effectiveTheme?.accent || "#2563eb"
                                         : " #3333ff"
-                                    }`,
+                                      }`,
                                     borderRadius: 10,
                                     padding: "10px 12px",
                                     background: isActive
