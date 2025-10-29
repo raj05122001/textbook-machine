@@ -87,7 +87,7 @@ function softDecodeEscapes(s) {
 
 
 /* -------------------- Markdown + HTML parser -------------------- */
-function markdownToHtml(src) {
+export function markdownToHtml(src) {
   if (!src) return "";
   // 0) fix double-escaped input
   let s = softDecodeEscapes(String(src));

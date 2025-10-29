@@ -6,13 +6,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import pageThemes from "./pageThemes.json";
-import TextFormat from "@/components/format/TextFormat";
+import TextFormat, { markdownToHtml } from "@/components/format/TextFormat";
 
 const API_BASE = "https://tbmplus-backend.ultimeet.io";
 
-/* ===========================
-   Fullscreen Image Magnifier (viewer for read-mode)
-=========================== */
+
 function ImageMagnifierOverlay({
   src,
   onClose,
@@ -28,7 +26,6 @@ function ImageMagnifierOverlay({
   const [panning, setPanning] = React.useState(false);
   const panStart = React.useRef({ x: 0, y: 0, tx0: 0, ty0: 0 });
 
-  // touch pinch state
   const pinchRef = React.useRef({
     active: false,
     startDist: 0,
@@ -38,7 +35,6 @@ function ImageMagnifierOverlay({
   });
 
   React.useEffect(() => {
-    // lock scroll
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -87,12 +83,11 @@ function ImageMagnifierOverlay({
     if (!img || !wrap) return;
 
     const rect = wrap.getBoundingClientRect();
-    const px = clientX - rect.left; // point inside wrapper
+    const px = clientX - rect.left;
     const py = clientY - rect.top;
 
     const newScale = clamp(scale * factor, minScale, maxScale);
 
-    // adjust translate so that (px,py) stays under cursor after zoom
     const dx = px - (px - tx) * (newScale / scale);
     const dy = py - (py - ty) * (newScale / scale);
     setScale(newScale);
@@ -100,14 +95,12 @@ function ImageMagnifierOverlay({
     setTy(dy);
   }
 
-  // wheel zoom
   function onWheel(e) {
     e.preventDefault();
     const direction = e.deltaY > 0 ? 1 / 1.1 : 1.1;
     zoomAtPoint(direction, e.clientX, e.clientY);
   }
 
-  // mouse pan
   function onMouseDown(e) {
     if (e.button !== 0) return;
     setPanning(true);
@@ -124,7 +117,6 @@ function ImageMagnifierOverlay({
     setPanning(false);
   }
 
-  // double click: toggle 1x <-> 2x at cursor
   function onDoubleClick(e) {
     e.preventDefault();
     const targetScale = scale < 2 ? 2 : 1;
@@ -132,7 +124,6 @@ function ImageMagnifierOverlay({
     zoomAtPoint(factor, e.clientX, e.clientY);
   }
 
-  // touch: pinch to zoom + drag to pan
   function getTouches(e) {
     return Array.from(e.touches || []);
   }
@@ -155,7 +146,6 @@ function ImageMagnifierOverlay({
       pinchRef.current.centerX = c.x;
       pinchRef.current.centerY = c.y;
     } else if (e.touches.length === 1) {
-      // start panning
       setPanning(true);
       const t = e.touches[0];
       panStart.current = { x: t.clientX, y: t.clientY, tx0: tx, ty0: ty };
@@ -206,7 +196,6 @@ function ImageMagnifierOverlay({
         cursor: panning ? "grabbing" : "default",
       }}
     >
-      {/* Toolbar */}
       <div
         style={{
           position: "fixed",
@@ -243,7 +232,6 @@ function ImageMagnifierOverlay({
         </button>
       </div>
 
-      {/* Canvas */}
       <div
         ref={wrapRef}
         onWheel={onWheel}
@@ -298,9 +286,7 @@ const btnStyle = {
   fontWeight: 700,
 };
 
-/* ===========================
-   API helper
-=========================== */
+
 async function jfetch(path, { method = "GET", body } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -316,9 +302,194 @@ async function jfetch(path, { method = "GET", body } = {}) {
   return res.json();
 }
 
-/* ===========================
-   Content helpers
-=========================== */
+
+function clamp01(x) {
+  return Math.max(0, Math.min(1, x));
+}
+function hexToRgb(hex) {
+  const h = (hex || "").replace("#", "").trim();
+  const v = h.length === 3
+    ? h.split("").map((c) => c + c).join("")
+    : h.padEnd(6, "0").slice(0, 6);
+  const n = parseInt(v, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function rgbToHex({ r, g, b }) {
+  const to = (n) => Math.max(0, Math.min(255, Math.round(n)))
+    .toString(16).padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+function mix(c1, c2, t) {
+  const a = hexToRgb(c1);
+  const b = hexToRgb(c2);
+  const m = { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t };
+  return rgbToHex(m);
+}
+function lighten(hex, t = 0.1) {
+  return mix(hex, "#ffffff", clamp01(t));
+}
+function darken(hex, t = 0.1) {
+  return mix(hex, "#000000", clamp01(t));
+}
+function relativeLuminance(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  const srgb = [r, g, b].map((v) => v / 255).map((c) => {
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+}
+function contrastRatio(h1, h2) {
+  const L1 = relativeLuminance(h1);
+  const L2 = relativeLuminance(h2);
+  const hi = Math.max(L1, L2), lo = Math.min(L1, L2);
+  return (hi + 0.05) / (lo + 0.05);
+}
+function encodeSVG(svg) {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+function pickReadableTextOn(bg) {
+  const cBlack = contrastRatio(bg, "#000000");
+  const cWhite = contrastRatio(bg, "#ffffff");
+  return cBlack > cWhite ? "#000000" : "#ffffff";
+}
+
+function buildA4Background({
+  pageBG = "#ffffff",
+  accent = "#2563eb",
+  accent2 = "#60a5fa",
+  style = "waves",
+  watermark = "TBM+",
+  wmOpacity = 0.12,
+  wmSize = 56,
+  wmGap = 220,
+}) {
+  const W = 2480, H = 3508;
+
+  const p0 = pageBG;
+  const p1 = lighten(pageBG, 0.06);
+  const p2 = darken(pageBG, 0.10);
+  const a1 = accent || "#2563eb";
+  const a2 = accent2 || lighten(a1, 0.35);
+
+  const textOnAccent = pickReadableTextOn(a1);
+  const wmColor = textOnAccent === "#000000" ? darken(a1, 0.5) : lighten(a1, 0.7);
+
+  const watermarkDef = `
+    <defs>
+      <pattern id="wm" width="${wmGap}" height="${wmGap}" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)">
+        <text x="0" y="${wmSize}" font-family="Inter,system-ui,Arial" font-size="${wmSize}"
+              fill="${wmColor}" opacity="${wmOpacity}" font-weight="700">
+          ${escapeXml(watermark)}
+        </text>
+      </pattern>
+      <linearGradient id="gA" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="${a2}" />
+        <stop offset="1" stop-color="${a1}" />
+      </linearGradient>
+      <linearGradient id="gB" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="${lighten(a1, 0.25)}" />
+        <stop offset="1" stop-color="${darken(a2, 0.25)}" />
+      </linearGradient>
+      <radialGradient id="gMesh" cx="25%" cy="20%" r="80%">
+        <stop offset="0" stop-color="${lighten(a2, 0.45)}" stop-opacity="0.65"/>
+        <stop offset="1" stop-color="${p0}" stop-opacity="0.0"/>
+      </radialGradient>
+      <radialGradient id="gMesh2" cx="75%" cy="85%" r="80%">
+        <stop offset="0" stop-color="${lighten(a1, 0.35)}" stop-opacity="0.55"/>
+        <stop offset="1" stop-color="${p0}" stop-opacity="0.0"/>
+      </radialGradient>
+    </defs>
+  `;
+
+  const baseRect = `<rect x="0" y="0" width="${W}" height="${H}" fill="${p0}"/>`;
+
+  let overlay = "";
+  if (style === "diagonal") {
+    overlay = `
+      <path d="M0,0 L${W},0 L${W},${Math.round(H * 0.26)} Q ${Math.round(W * 0.55)},${Math.round(H * 0.36)} ${Math.round(W * 0.35)},${Math.round(H * 0.24)} T 0,${Math.round(H * 0.34)} Z" fill="url(#gA)" opacity="0.95"/>
+      <path d="M0,${Math.round(H * 0.70)} Q ${Math.round(W * 0.25)},${Math.round(H * 0.60)} ${Math.round(W * 0.55)},${Math.round(H * 0.72)} T ${W},${Math.round(H * 0.60)} L${W},${H} L0,${H} Z" fill="url(#gB)" opacity="0.90"/>
+    `;
+  } else if (style === "mesh") {
+    overlay = `
+      <rect x="0" y="0" width="${W}" height="${H}" fill="url(#gMesh)"/>
+      <rect x="0" y="0" width="${W}" height="${H}" fill="url(#gMesh2)"/>
+      <circle cx="${Math.round(W * 0.15)}" cy="${Math.round(H * 0.18)}" r="${Math.round(H * 0.14)}" fill="${lighten(a2, 0.1)}" opacity="0.08"/>
+      <circle cx="${Math.round(W * 0.82)}" cy="${Math.round(H * 0.86)}" r="${Math.round(H * 0.12)}" fill="${lighten(a1, 0.1)}" opacity="0.08"/>
+    `;
+  } else if (style === "soft-arcs") {
+    overlay = `
+      <path d="M0,${Math.round(H * 0.16)} Q ${Math.round(W * 0.26)},${Math.round(H * 0.04)} ${Math.round(W * 0.52)},${Math.round(H * 0.10)} T ${W},${Math.round(H * 0.07)} L${W},0 L0,0 Z" fill="${a2}" opacity="0.85"/>
+      <path d="M0,${Math.round(H * 0.22)} Q ${Math.round(W * 0.30)},${Math.round(H * 0.10)} ${Math.round(W * 0.60)},${Math.round(H * 0.16)} T ${W},${Math.round(H * 0.12)} L${W},${Math.round(H * 0.07)} Q ${Math.round(W * 0.70)},${Math.round(H * 0.18)} ${Math.round(W * 0.35)},${Math.round(H * 0.11)} T 0,${Math.round(H * 0.16)} Z" fill="${a1}" opacity="0.92"/>
+      <path d="M0,${Math.round(H * 0.86)} Q ${Math.round(W * 0.28)},${Math.round(H * 0.98)} ${Math.round(W * 0.60)},${Math.round(H * 0.90)} T ${W},${Math.round(H * 0.95)} L${W},${H} L0,${H} Z" fill="${lighten(a2, 0.05)}" opacity="0.9"/>
+    `;
+  } else {
+    // waves (default)
+    overlay = `
+      <path d="M0,0 L${W},0 L${W},${Math.round(H * 0.18)} Q ${Math.round(W * 0.66)},${Math.round(H * 0.28)} ${Math.round(W * 0.35)},${Math.round(H * 0.16)} T 0,${Math.round(H * 0.22)} Z"
+            fill="${a1}" opacity="0.95"/>
+      <path d="M0,${Math.round(H * 0.20)} Q ${Math.round(W * 0.26)},${Math.round(H * 0.08)} ${Math.round(W * 0.52)},${Math.round(H * 0.16)} T ${W},${Math.round(H * 0.10)} L${W},${Math.round(H * 0.0)} L0,0 Z"
+            fill="${a2}" opacity="0.85"/>
+      <path d="M0,${Math.round(H * 0.84)} Q ${Math.round(W * 0.25)},${Math.round(H * 0.70)} ${Math.round(W * 0.55)},${Math.round(H * 0.88)} T ${W},${Math.round(H * 0.76)} L${W},${H} L0,${H} Z"
+            fill="${lighten(a1, 0.05)}" opacity="0.90"/>
+    `;
+  }
+
+  const watermarkRect = `<rect x="0" y="0" width="${W}" height="${H}" fill="url(#wm)"/>`;
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      ${watermarkDef}
+      ${baseRect}
+      ${overlay}
+      ${watermarkRect}
+    </svg>
+  `.trim();
+
+  return encodeSVG(svg);
+}
+function escapeXml(s = "") {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+
+function generateBackgroundCandidates({
+  pageBG,
+  accent,
+  accent2,
+  watermark,
+  wmOpacity,
+}) {
+  const styles = ["waves", "diagonal", "mesh", "soft-arcs"];
+  const list = [];
+  const combos = [
+    { a: accent, b: accent2 },
+    { a: darken(accent, 0.08), b: accent2 },
+    { a: accent, b: lighten(accent2, 0.08) },
+  ];
+  for (let i = 0; i < combos.length; i++) {
+    for (let s = 0; s < styles.length; s++) {
+      const url = buildA4Background({
+        pageBG,
+        accent: combos[i].a,
+        accent2: combos[i].b,
+        style: styles[s],
+        watermark,
+        wmOpacity,
+      });
+      list.push({ url, label: `${styles[s]} #${i + 1}` });
+    }
+  }
+  const ranked = list
+    .map((it) => ({ ...it, score: contrastRatio(pageBG, accent) + contrastRatio(pageBG, accent2) }))
+    .sort((a, b) => b.score - a.score);
+  return ranked.slice(0, 8);
+}
+
+
 function normalizeQuestions(q) {
   if (!q) return "";
   if (Array.isArray(q))
@@ -456,15 +627,32 @@ function readMeta(html) {
   return { unit, title, className: klass };
 }
 
-/* ===========================
-   Convert book + theme → array of page HTML
-=========================== */
+
 function bookToPagesWithTheme(book, theme) {
   const tempPages = [];
   const page_bg = theme?.page_bg || "#ffffff";
   const text = theme?.text || "#0f172a";
   const accent = theme?.accent || "#2563eb";
   const accent2 = theme?.accent2 || "#60a5fa";
+  const hasBgImg = !!theme?.page_bg_image;
+  const blockBg = hasBgImg ? "transparent" : page_bg;                 // for sections/cards
+  const tableBg = hasBgImg ? "transparent" : page_bg;                 // for <table>
+  const thBg = hasBgImg ? "transparent" : "rgba(37,99,235,.06)";
+  // const rowBg = hasBgImg ? "transparent" : (ui % 2 === 0 ? "rgba(0,0,0,.02)" : page_bg);
+
+
+  const muted = hasBgImg ? (text || "#e2e8f0") : "#64748b";
+  const tableBd = hasBgImg ? "rgba(255,255,255,.25)" : "#e5e7eb";
+
+  // chip styles (lessons)
+  const chipBg = hasBgImg ? "transparent" : "#fff";
+  const chipBd = tableBd;
+  const chipShadow = hasBgImg ? "none" : "0 2px 8px rgba(0,0,0,.03)";
+  const badgeBg = hasBgImg ? "transparent" : (accent || text);
+  const badgeTxt = hasBgImg ? text : "#fff";
+
+
+
 
   const sj = book?.syllabus;
   const units =
@@ -514,29 +702,40 @@ function bookToPagesWithTheme(book, theme) {
       const uPages = u.number_of_pages ?? "—";
 
       const chipBase = `
-      display:inline-flex;align-items:center;gap:6px;
-      padding:6px 10px;margin:6px 8px 0 0;border:1px solid #e5e7eb;
-      border-radius:9999px;font-size:12px;line-height:1.1;color:${text};
-      background:#fff;max-width:100%;box-sizing:border-box;overflow:hidden
-    `;
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 10px;margin:6px 8px 0 0;
+  border:1px solid ${tableBd};
+  border-radius:9999px;font-size:12px;line-height:1.1;
+  background:${hasBgImg ? "transparent" : "#fff"};
+  color:${text};
+  max-width:100%;box-sizing:border-box;overflow:hidden
+`;
+
       const chipNum = `
-      display:inline-grid;place-items:center;min-width:18px;height:18px;
-      padding:0 4px;border-radius:6px;background:${accent};
-      color:#fff;font-weight:700;font-size:11px;flex:0 0 auto
-    `;
+  display:inline-grid;place-items:center;min-width:18px;height:18px;
+  padding:0 4px;border-radius:6px;
+  ${hasBgImg
+          ? `background:transparent;border:1px solid ${tableBd};color:${text};`
+          : `background:${accent};color:#fff;`}
+  font-weight:700;font-size:11px;flex:0 0 auto
+`;
+
       const chipTitle = `
-      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%
-    `;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;
+  color:${text}
+`;
+
 
       const lessonChipsInner = (u.lessons || [])
         .map((l, li) => {
           const num = `${ui + 1}.${li + 1}`;
           const title = l.title || `Lesson ${li + 1}`;
           return `
-        <span style="${chipBase}">
-          <span style="${chipNum}">${num}</span>
-          <span style="${chipTitle}">${_escapeHtml(title)}</span>
-        </span>
+      <span style="${chipBase}">
+  <span style="${chipNum}">${num}</span>
+  <span style="${chipTitle}">${_escapeHtml(title)}</span>
+</span>
+
       `;
         })
         .join("");
@@ -546,7 +745,7 @@ function bookToPagesWithTheme(book, theme) {
           ? lessonChipsInner
           : `<span style="${chipBase};opacity:.7;background:#f8fafc">No lessons</span>`;
 
-      const rowBg = ui % 2 === 0 ? "rgba(0,0,0,.02)" : page_bg;
+      const rowBg = hasBgImg ? "transparent" : (ui % 2 === 0 ? "rgba(0,0,0,.02)" : page_bg);
 
       return `
       <tr style="background:${rowBg}">
@@ -579,78 +778,90 @@ function bookToPagesWithTheme(book, theme) {
     .join("");
 
   const contentsBody = `
-  <div style="padding:8px 0 4px 0;">
+  <div style="padding:8px 0 4px 0; background:${blockBg};">
     <div style="
       display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:0 0 8px 0;
     ">
-<h1 style="
-  margin:0 auto;
-  font-size:2.25rem;
-  font-weight:800;
-  color:${text};
-  text-align:center;
-  width:100%;
-">Contents</h1>
-      <div style="font-size:12px;color:#64748b;font-weight:700;">Units & lessons overview</div>
+      <h1 style="
+        margin:0 auto;
+        font-size:2.25rem;
+        font-weight:800;
+        color:${text};
+        text-align:center;
+        width:100%;
+      ">Contents</h1>
     </div>
 
-    <table style="
-      width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;
-      border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background-color:${page_bg};
-      box-shadow:0 2px 10px rgba(0,0,0,.03)
-    ">
-      <thead>
-        <tr>
-          <th style="
-            text-align:left;padding:12px 12px;width:42px;color:${accent};font-weight:800;
-            border-bottom:1px solid #e5e7eb;background:rgba(37,99,235,.06)
-          ">#</th>
-          <th style="
-            text-align:left;padding:12px 12px;color:${accent};font-weight:800;
-            border-bottom:1px solid #e5e7eb;background:rgba(37,99,235,.06)
-          ">Unit</th>
-          <th style="
-            text-align:right;padding:12px 12px;color:${accent};font-weight:800;width:120px;
-            border-bottom:1px solid #e5e7eb;background:rgba(37,99,235,.06)
-          ">Pages</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tocRows ||
-    `
-          <tr>
-            <td colspan="3" style="padding:16px 12px;color:#64748b;text-align:center;border-top:1px dashed #e5e7eb;">
-              No units available
-            </td>
-          </tr>
-        `
-    }
-      </tbody>
-    </table>
+ <table style="
+  width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;
+  border:1px solid ${tableBd};
+  border-radius:12px;overflow:hidden;
+  background-color:${blockBg};
+  box-shadow:${hasBgImg ? 'none' : '0 2px 10px rgba(0,0,0,.03)'}">
+  <thead>
+    <tr>
+      <th style="
+        text-align:left;padding:12px 12px;width:42px;color:${accent};font-weight:800;
+        border-bottom:1px solid ${tableBd};
+        background:${hasBgImg ? 'transparent' : 'rgba(37,99,235,.06)'}">#</th>
+      <th style="
+        text-align:left;padding:12px 12px;color:${accent};font-weight:800;
+        border-bottom:1px solid ${tableBd};
+        background:${hasBgImg ? 'transparent' : 'rgba(37,99,235,.06)'}">Unit</th>
+      <th style="
+        text-align:right;padding:12px 12px;color:${accent};font-weight:800;width:120px;
+        border-bottom:1px solid ${tableBd};
+        background:${hasBgImg ? 'transparent' : 'rgba(37,99,235,.06)'}">Pages</th>
+    </tr>
+  </thead>
+  <tbody style="background:${blockBg};">
+    ${tocRows || `
+      <tr style="background:${blockBg};">
+        <td colspan="3" style="
+          padding:16px 12px;
+          color:${muted};
+          text-align:center;
+          border-top:1px dashed ${tableBd};
+          background:${blockBg};
+        ">
+          No units available
+        </td>
+      </tr>
+    `}
+  </tbody>
+</table>
+
   </div>
 `;
+
   wrap(contentsBody, { unit: "Contents" });
 
   units.forEach((u, ui) => {
     const uTitle = u.title || `Unit ${ui + 1}`;
     const uPages = u.number_of_pages ?? "—";
     const uDesc = u.description || "";
-
     const lessonChipBase = `
-    display:inline-flex;align-items:center;gap:8px;
-    padding:10px 12px;border-radius:12px;background:#fff;
-    border:1px solid #e5e7eb; box-shadow:0 2px 8px rgba(0,0,0,.03);
-    max-width:100%; box-sizing:border-box; margin:6px 8px 0 0
-  `;
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 12px;border-radius:12px;
+  background:${chipBg};
+  border:1px solid ${chipBd};
+  box-shadow:${chipShadow};
+  max-width:100%; box-sizing:border-box; margin:6px 8px 0 0
+`;
+
     const lessonNumBadge = `
-    display:inline-grid;place-items:center;min-width:24px;height:24px;
-    padding:0 6px;border-radius:8px;background:${accent};
-    color:#fff;font-weight:800;font-size:12px;flex:0 0 auto
-  `;
+  display:inline-grid;place-items:center;min-width:24px;height:24px;
+  padding:0 6px;border-radius:8px;
+  background:${badgeBg};
+  color:${badgeTxt};
+  font-weight:800;font-size:12px;flex:0 0 auto
+`;
+
     const lessonTitleStyle = `
-    font-weight:700;color:${text};font-size:13px;min-width:0;max-width:100%;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap
-  `;
+  font-weight:700;color:${text};font-size:13px;min-width:0;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+`;
+
 
     const lessonsChipsHTML = (u.lessons || [])
       .map((l, li) => {
@@ -665,6 +876,7 @@ function bookToPagesWithTheme(book, theme) {
       })
       .join("");
 
+
     const lessonsBlock =
       u.lessons && u.lessons.length
         ? `
@@ -678,27 +890,25 @@ function bookToPagesWithTheme(book, theme) {
         : `<p style="margin:0;color:#64748b;">No lessons</p>`;
 
     const unitHeroBody = [
-      `<section style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;background-color:${page_bg};">
-      <div style="padding:20px 16px;max-width:820px;">
-        <h1 style="margin:0 0 10px 0;font-size:2.5rem;font-weight:800;letter-spacing:.2px;color:${text};">
-          ${_escapeHtml(uTitle)}
-        </h1>
-        ${uDesc
+      `<section style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;background-color:${blockBg};">
+    <div style="padding:20px 16px;max-width:820px;">
+      <h1 style="margin:0 0 10px 0;font-size:2.5rem;font-weight:800;letter-spacing:.2px;color:${text};">
+        ${_escapeHtml(uTitle)}
+      </h1>
+      ${uDesc
         ? `<p style="margin:14px auto 0;max-width:720px;color:${text};line-height:1.7;">
-                 ${_escapeHtml(uDesc)}
-               </p>`
-        : ``
-      }
-      </div>
-    </section>`,
+             ${_escapeHtml(uDesc)}
+           </p>`
+        : ``}
+    </div>
+  </section>`,
 
-      `<div style="margin-top:18px;">
-      <div style="display:flex;align-items:center;gap:10px;margin:0 0 10px 0">
-        <h3 style="margin:0;font-size:1.125rem;font-weight:800;color:${text};">Lessons</h3>
-      
-      </div>
-      ${lessonsBlock}
-    </div>`,
+      `<div style="margin-top:18px;background:${blockBg};">
+    <div style="display:flex;align-items:center;gap:10px;margin:0 0 10px 0">
+      <h3 style="margin:0;font-size:1.125rem;font-weight:800;color:${text};">Lessons</h3>
+    </div>
+    ${lessonsBlock}
+  </div>`,
     ].join("\n\n");
 
     wrap(unitHeroBody, { unit: uTitle });
@@ -745,7 +955,7 @@ function bookToPagesWithTheme(book, theme) {
 }
 
 /* ===========================
-   Theme Panel
+   Theme Panel (+ Smart Background generator)
 =========================== */
 function ThemePanel({
   selectedThemeKey,
@@ -761,7 +971,53 @@ function ThemePanel({
   setSvgColorMap,
   onClose,
   onPickImage,
+  onPickImageUrl,     // keeps top image
+  onApplyBackgroundUrl,     // NEW: set a data URL image directly
+  wmDefault = "TBM+",
+  bgScope = "all",
+  setBgScope = () => { },
 }) {
+  // Smart BG state
+
+  const [styleKind, setStyleKind] = React.useState("auto");
+  const [bgCandidates, setBgCandidates] = React.useState([]);
+
+  const pageBG = custom.page_bg || effectiveTheme?.page_bg || "#ffffff";
+  const textCol = custom.text || effectiveTheme?.text || "#0f172a";
+  const a1 = custom.accent || effectiveTheme?.accent || "#2563eb";
+  const a2 = custom.accent2 || effectiveTheme?.accent2 || "#60a5fa";
+  const [wmEnabled, setWmEnabled] = React.useState(true);
+  const [wmText, setWmText] = React.useState((wmDefault || "TBM+").toUpperCase());
+  const [wmOpacity, setWmOpacity] = React.useState(0.12);
+  const [wmGap, setWmGap] = React.useState(220);
+  const [wmSize, setWmSize] = React.useState(56);
+  const [wmAngle, setWmAngle] = React.useState(-30);
+
+  const regenerate = React.useCallback(() => {
+    const base = generateBackgroundCandidates({
+      pageBG: pageBG,
+      accent: a1,
+      accent2: a2,
+      watermark: wmText || wmDefault || "TBM+",
+      wmOpacity: wmOpacity,
+    });
+    const filtered =
+      styleKind === "auto" ? base : base.filter((c) => c.label.startsWith(styleKind));
+    setBgCandidates(filtered.length ? filtered : base);
+  }, [pageBG, a1, a2, wmText, wmOpacity, styleKind, wmDefault]);
+
+  React.useEffect(() => {
+    regenerate();
+  }, [regenerate]);
+
+  const smallBtn = {
+    border: "1px solid #e5e7eb",
+    background: "#fff",
+    borderRadius: 8,
+    padding: "6px 10px",
+    cursor: "pointer",
+  };
+
   return (
     <aside
       style={{
@@ -787,21 +1043,179 @@ function ThemePanel({
         <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>
           Theme settings
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            border: "1px solid #e5e7eb",
-            background: "#fff",
-            borderRadius: 8,
-            padding: "6px 10px",
-            cursor: "pointer",
-          }}
-          title="Close theme panel"
-        >
+        <button onClick={onClose} style={smallBtn} title="Close theme panel">
           Close
         </button>
       </div>
 
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 10,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ color: "#0f172a", marginBottom: 8 }}>
+          Upload Page Background (A4, 2480×3508) — applies to all pages
+        </div>
+
+        <div style={{
+          display: "grid", gap: 8, fontSize: 12, color: "#334155",
+          gridTemplateColumns: "1fr 1fr", alignItems: "center", marginBottom: 8
+        }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={wmEnabled}
+              onChange={(e) => setWmEnabled(e.target.checked)}
+            />
+            <span style={{ fontWeight: 700 }}>Add watermark</span>
+          </label>
+
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Opacity (0–1)</span>
+            <input
+              type="number" min={0} max={1} step={0.01}
+              value={wmOpacity}
+              onChange={(e) => setWmOpacity(Math.max(0, Math.min(1, Number(e.target.value) || 0)))}
+              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 8px" }}
+            />
+          </label>
+
+          <label style={{ gridColumn: "1 / -1", display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Watermark text</span>
+            <input
+              type="text"
+              value={wmText}
+              onChange={(e) => setWmText(e.target.value)}
+              placeholder="e.g. TBM+ / Book Title"
+              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 10px" }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Font size</span>
+            <input
+              type="number" min={10} max={200} step={2}
+              value={wmSize}
+              onChange={(e) => setWmSize(Math.max(10, Math.min(200, Number(e.target.value) || 56)))}
+              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 8px" }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Gap</span>
+            <input
+              type="number" min={60} max={400} step={10}
+              value={wmGap}
+              onChange={(e) => setWmGap(Math.max(60, Math.min(400, Number(e.target.value) || 220)))}
+              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 8px" }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Angle (°)</span>
+            <input
+              type="number" min={-90} max={90} step={1}
+              value={wmAngle}
+              onChange={(e) => setWmAngle(Math.max(-90, Math.min(90, Number(e.target.value) || -30)))}
+              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 8px" }}
+            />
+          </label>
+        </div>
+
+        <div style={{ display: "grid", gap: 8, fontSize: 12, color: "#334155" }}>
+          {/* Hidden file input */}
+          <input
+            id="bg-file"
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => {
+                const dataUrl = reader.result; // data:image/...;base64,…
+                if (wmEnabled) {
+                  const wmDataUrl = createWatermarkedBackgroundSVG({
+                    imageUrl: dataUrl,
+                    text: wmText || "TBM+",
+                    opacity: wmOpacity,
+                    gap: wmGap,
+                    size: wmSize,
+                    angle: wmAngle,
+                  });
+                  onApplyBackgroundUrl?.(wmDataUrl);    // ⟵ watermark embedded
+                } else {
+                  onApplyBackgroundUrl?.(dataUrl);      // ⟵ plain image
+                }
+              };
+              reader.readAsDataURL(file);
+              e.target.value = ""; // allow re-selecting same file
+            }}
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              padding: 0,
+              margin: -1,
+              overflow: "hidden",
+              clip: "rect(0,0,0,0)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
+            title="Select background image"
+          />
+
+          <button
+            type="button"
+            onClick={() => document.getElementById("bg-file")?.click()}
+            style={{
+              height: 36,
+              borderRadius: 8,
+              border: "1px solid #e2e8f0",
+              padding: "6px 12px",
+              background: "#fff",
+              color: "#0f172a",
+              cursor: "pointer",
+              fontWeight: 600,
+              justifySelf: "start",
+              width: "100%",
+            }}
+            aria-label="Choose page background"
+          >
+            Choose Background (all pages)
+          </button>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => onApplyBackgroundUrl?.("")}
+              style={{
+                height: 32,
+                borderRadius: 8,
+                border: "1px solid #e2e8f0",
+                padding: "0 10px",
+                background: "#fff",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+              title="Remove background"
+            >
+              Remove background
+            </button>
+          </div>
+
+          <div style={{ fontSize: 12, color: "#64748b" }}>
+            Tip: 2480×3508 (A4 @ 300 DPI) best rahega. SVG/data URL bhi chalega. Agar “Add watermark” on hai,
+            to upload hotey hi background me diagonal repeated text embed ho jayega.
+          </div>
+        </div>
+      </div>
+
+
+      {/* Manual cover uploader */}
       <label
         style={{
           display: "grid",
@@ -811,7 +1225,7 @@ function ThemePanel({
           color: "#334155",
         }}
       >
-        <span style={{ fontWeight: 700 }}>Choose Cover page (2480 x 3508)</span>
+        <span style={{ fontWeight: 700 }}>Or upload a cover (2480 × 3508)</span>
 
         <input
           id="cover-file"
@@ -848,7 +1262,7 @@ function ThemePanel({
             cursor: "pointer",
             fontWeight: 600,
             justifySelf: "start",
-            width: "100%", 
+            width: "100%",
           }}
           aria-label="Choose cover page"
         >
@@ -856,7 +1270,7 @@ function ThemePanel({
         </button>
       </label>
 
-
+      {/* Pick a theme */}
       <label
         style={{
           display: "grid",
@@ -871,7 +1285,7 @@ function ThemePanel({
           value={selectedThemeKey}
           onChange={(e) => setSelectedThemeKey(e.target.value)}
           style={{
-                        width: "100%", 
+            width: "100%",
             height: 36,
             borderRadius: 8,
             border: "1px solid #e2e8f0",
@@ -893,6 +1307,7 @@ function ThemePanel({
         </select>
       </label>
 
+      {/* Color toggles */}
       <div style={{ fontSize: 12, color: "#334155", display: "grid", gap: 12 }}>
         <label
           style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
@@ -1793,15 +2208,12 @@ function EditorPanel({ onClose }) {
         </div>
       </div>
 
-      {/* Inline overlay with 8 handles + drag bar (replaces old side panel) */}
       <Overlay />
     </aside>
   );
 }
 
-/* ===========================
-   Document Viewer
-=========================== */
+
 function DocView({
   pages,
   fontSize = 16,
@@ -1811,6 +2223,10 @@ function DocView({
   editable = false,
   imageUrl = null,
   onImageClick = () => { },
+  bgScope = "all",
+  selectedPage = null,
+  onSelectPage = () => { },
+  bgDisabledPages = new Set(),
 }) {
   const pageWidth = Math.min(deviceDimensions.width, 860);
   const pageMinHeight = Math.max(deviceDimensions.height, 980);
@@ -1823,7 +2239,7 @@ function DocView({
   const accent2 = theme?.accent2 ?? null;
   const headHTML = theme?.header || "";
   const footHTML = theme?.footer || "";
-
+  const bgImg = theme?.page_bg_image || null;
   function getMetaFromPage(html, key) {
     const m = new RegExp(`data-${key}="([^"]*)"`, "i").exec(String(html || ""));
     return m && m[1] ? m[1] : "";
@@ -1860,6 +2276,13 @@ function DocView({
 
   return (
     <div data-docview style={{ padding: "12px 0 24px", background: "transparent" }}>
+
+      {bgImg ? (
+        <style>{`
+        .doc-sheet .tbm-page { background-color: transparent !important; }
+        .doc-sheet .tbm-body { background-color: transparent !important; }
+      `}</style>
+      ) : null}
       {imageUrl ? (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
           <div
@@ -1909,7 +2332,22 @@ function DocView({
             style={{
               width: pageWidth,
               minHeight: pageMinHeight,
-              backgroundColor: pageBg,
+              backgroundColor: (theme?.page_bg_image ? "transparent" : pageBg),
+              outline: editable && selectedPage === i + 1 ? "2px solid #2563eb" : "none",
+              outlineOffset: 0,
+              // Only first page par BG image, warna sab par:
+              ...(theme?.page_bg_image && (bgScope === "all" || i === 0)
+                ? (bgDisabledPages?.has?.(i)
+                  ? { backgroundImage: "none" } // ⟵ per-page remove
+                  : {
+                    backgroundImage: `url("${theme.page_bg_image}")`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                  })
+                : {
+                  backgroundImage: "none",
+                }),
               color: textCol,
               borderRadius: 12,
               border: "1px solid #e5e7eb",
@@ -1919,11 +2357,21 @@ function DocView({
               display: "flex",
               flexDirection: "column",
             }}
+            onClick={() => {
+              if (editable) onSelectPage(i + 1);
+            }}
           >
-            <div style={{ display: "flex", flexDirection: "column", backgroundColor: pageBg }}>
+            <div style={{ display: "flex", flexDirection: "column", backgroundColor: bgImg ? "transparent" : pageBg }}>
               {accent ? <div style={{ height: 4, background: accent }} /> : null}
               {accent2 ? <div style={{ height: 4, background: accent2 }} /> : null}
-
+              {editable && selectedPage === i + 1 ? (
+                <div style={{
+                  position: "absolute", top: 6, right: 10, zIndex: 1,
+                  background: "#2563eb", color: "#fff", borderRadius: 8, padding: "2px 8px", fontSize: 12, fontWeight: 700
+                }}>
+                  Selected
+                </div>
+              ) : null}
               {headHTML ? (
                 <div
                   style={{ overflow: "hidden", lineHeight: 0 }}
@@ -1970,15 +2418,18 @@ function DocView({
                 fontSize,
                 lineHeight: 1.7,
                 color: textCol,
-                backgroundColor: bodyBg,
-                backgroundImage:
-                  "repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(0,0,0,0.02) 31px, rgba(0,0,0,0.02) 32px)",
-                outline: editable ? "2px dashed rgba(37,99,235,.35)" : "none",
+                backgroundColor: theme?.page_bg_image ? "transparent" : bodyBg,
+                // Agar background image use ho rahi hai to content pe koi backgroundImage mat lagayein:
+                ...(theme?.page_bg_image ? {} : {
+                  backgroundImage:
+                    "repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(0,0,0,0.02) 31px, rgba(0,0,0,0.02) 32px)"
+                }),
+                backgroundBlendMode: undefined,
               }}
               onMouseDown={(e) => {
                 if (editable) e.currentTarget.focus();
               }}
-              {...(editable ? { dangerouslySetInnerHTML: { __html: page || "" } } : {})}
+              {...(editable ? { dangerouslySetInnerHTML: { __html: markdownToHtml(page) || "" } } : {})}
               onClick={(e) => {
                 if (editable) return; // don't open magnifier in edit mode
                 const t = e.target;
@@ -2014,7 +2465,7 @@ function DocView({
                     padding: "8px 14px",
                     borderTop: "1px solid #e5e7eb",
                     color: textCol,
-                    backgroundColor: pageBg,
+                    backgroundColor: bgImg ? "transparent" : pageBg,
                     fontSize: 12,
                     fontWeight: 600,
                   }}
@@ -2040,6 +2491,7 @@ function DocView({
 @media (max-width: 768px) {
   div[data-docview] { padding: 8px 0 16px; }
 }
+  .doc-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 @media print {
   body { background: #fff !important; }
   * { box-shadow: none !important; }
@@ -2050,7 +2502,7 @@ function DocView({
     width: auto !important;
     min-height: auto !important;
     box-shadow: none !important;
-    background: #ffffff !important;
+    background-color: #ffffff !important;
     color: #000000 !important;
   }
 }
@@ -2075,9 +2527,13 @@ export default function BookDetailsPage() {
     themeKeys[0] || "theme1"
   );
   const currentTheme = pageThemes?.[selectedThemeKey] || null;
-
+  const [pageBgImage, setPageBgImage] = React.useState("");
+  const [bgScope, setBgScope] = React.useState("all");
   const [showThemePanel, setShowThemePanel] = React.useState(false);
   const [showEditorPanel, setShowEditorPanel] = React.useState(false);
+  // ✅ Plain JS (no generics)
+  const [selectedPage, setSelectedPage] = React.useState(null);
+  const [bgDisabledPages, setBgDisabledPages] = React.useState(new Set());
 
   const tocRef = React.useRef(null);
 
@@ -2149,8 +2605,13 @@ export default function BookDetailsPage() {
       accent2,
       header: finalHeader,
       footer: finalFooter,
+      page_bg_image: pageBgImage || undefined,
     };
-  }, [currentTheme, apply, custom, svgColorMap]);
+  }, [currentTheme, apply, custom, svgColorMap, pageBgImage]);
+  const handleApplyBgUrl = React.useCallback((url) => {
+    setPageBgImage(url);
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
+  }, []);
 
   React.useEffect(() => {
     let mounted = true;
@@ -2173,16 +2634,32 @@ export default function BookDetailsPage() {
 
   React.useEffect(() => {
     return () => {
-      if (topImageUrl) URL.revokeObjectURL(topImageUrl);
+      if (topImageUrl && topImageUrl.startsWith("blob:")) {
+        try { URL.revokeObjectURL(topImageUrl); } catch { }
+      }
     };
   }, [topImageUrl]);
 
   const handlePickImage = React.useCallback((file) => {
     const url = URL.createObjectURL(file);
     setTopImageUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
+      if (prev && prev.startsWith("blob:")) {
+        try { URL.revokeObjectURL(prev); } catch { }
+      }
       return url;
     });
+  }, []);
+
+  // NEW: accept data URL directly (generated SVG with watermark)
+  const handlePickImageUrl = React.useCallback((url) => {
+    setTopImageUrl((prev) => {
+      if (prev && prev.startsWith("blob:")) {
+        try { URL.revokeObjectURL(prev); } catch { }
+      }
+      return url; // data: URL or any URL
+    });
+    // Smooth scroll to top so user sees the applied image
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   }, []);
 
   const pages = React.useMemo(
@@ -2327,8 +2804,67 @@ export default function BookDetailsPage() {
               <span role="img" aria-label="edit">✏️</span>
               <span>{showEditorPanel ? "Close Edit" : "Edit"}</span>
             </button>
+
+            {showEditorPanel ? (
+              <
+                >
+
+
+                <button
+                  onClick={() => {
+                    if (selectedPage == null) return;
+                    setBgDisabledPages((prev) => {
+                      const s = new Set(prev);
+                      s.add(selectedPage - 1); // store 0-based
+                      return s;
+                    });
+                  }}
+                  disabled={selectedPage == null}
+                  style={{
+                    height: 32,
+                    padding: "0 12px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 8,
+                    background: "#fff",
+                    fontWeight: 600,
+                    cursor: selectedPage != null ? "pointer" : "not-allowed",
+                  }}
+                  title="Remove background image on this page only"
+                >
+                  Remove BG (this page)
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (selectedPage == null) return;
+                    setBgDisabledPages((prev) => {
+                      const s = new Set(prev);
+                      s.delete(selectedPage - 1);
+                      return s;
+                    });
+                  }}
+                  disabled={selectedPage == null}
+                  style={{
+                    height: 32,
+                    padding: "0 12px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 8,
+                    background: "#fff",
+                    fontWeight: 600,
+                    cursor: selectedPage != null ? "pointer" : "not-allowed",
+                  }}
+                  title="Restore background image on this page"
+                >
+                  Restore BG (this page)
+                </button>
+              </>
+            ) : null}
+
           </div>
         </div>
+
+
+
 
         <div
           style={{
@@ -2347,6 +2883,7 @@ export default function BookDetailsPage() {
               themeKeys={themeKeys}
               pageThemes={pageThemes}
               effectiveTheme={effectiveTheme}
+              onApplyBackgroundUrl={handleApplyBgUrl}
               apply={apply}
               setApply={setApply}
               custom={custom}
@@ -2355,6 +2892,10 @@ export default function BookDetailsPage() {
               setSvgColorMap={setSvgColorMap}
               onClose={() => setShowThemePanel(false)}
               onPickImage={handlePickImage}
+              onPickImageUrl={handlePickImageUrl}   // NEW
+              wmDefault={(book?.title || "TBM+").toUpperCase()} // NEW default watermark text
+              bgScope={bgScope}
+              setBgScope={setBgScope}
             />
           ) : (
             <>
@@ -2372,16 +2913,13 @@ export default function BookDetailsPage() {
                   padding: 12,
                 }}
               >
-                <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 8 }}>
-                  In this book
-                </div>
-
                 <div style={{ display: "grid", gap: 8 }}>
                   {(() => {
                     const pageIndexLocal = (pages || []).map((p, i) => ({
                       page: i + 1,
                       ...readMeta(p),
                     }));
+
                     const map = new Map();
                     pageIndexLocal.forEach(({ page, unit, title }) => {
                       const uKey = unit || "Untitled Unit";
@@ -2391,102 +2929,122 @@ export default function BookDetailsPage() {
                       if (!L.has(lKey)) L.set(lKey, page);
                     });
 
-                    const grouped = Array.from(map.entries()).map(
-                      ([unitTitle, lessonsMap]) => ({
-                        unit: unitTitle,
-                        lessons: Array.from(lessonsMap.entries()).map(
-                          ([title, firstPage]) => ({
-                            title,
-                            firstPage,
-                          })
-                        ),
-                      })
-                    );
+                    const grouped = Array.from(map.entries()).map(([unitTitle, lessonsMap]) => ({
+                      unit: unitTitle,
+                      lessons: Array.from(lessonsMap.entries()).map(([title, firstPage]) => ({
+                        title,
+                        firstPage,
+                      })),
+                    }));
 
-                    const activeFirst = activePointer?.firstPage;
+                    const isGenericTitle = (t) => {
+                      const s = String(t || "").trim();
+                      if (!s) return true;
+                      const low = s.toLowerCase();
+                      if (low === "page" || low === "pages") return true;
+                      if (/^page\s*\d*$/i.test(s)) return true;
+                      if (low === "contents" || low === "table of contents") return true;
+                      return false;
+                    };
 
-                    return grouped.map((u) => {
-                      const lessonsSorted = u.lessons
-                        .slice()
-                        .sort((a, b) => a.firstPage - b.firstPage);
+                    return grouped
+                      .filter((u) => String(u.unit || "").trim().toLowerCase() !== "contents")
+                      .map((u) => {
+                        const seen = new Set();
+                        const filtered = u.lessons
+                          .slice()
+                          .sort((a, b) => a.firstPage - b.firstPage)
+                          .filter((l) => l.firstPage > 2)
+                          .filter((l) => !isGenericTitle(l.title))
+                          .filter((l) => {
+                            const key = String(l.title || "").trim().toLowerCase();
+                            if (!key) return false;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                          });
 
-                      return (
-                        <div key={u.unit}>
-                          <div
-                            style={{
-                              fontWeight: 700,
-                              fontSize: 13,
-                              color: "#111827",
-                              marginBottom: 6,
-                            }}
-                          >
-                            {u.unit || "Unit"}
-                          </div>
-                          <div style={{ display: "grid", gap: 4 }}>
-                            {lessonsSorted.map((l) => {
-                              const isActive = l.firstPage === activeFirst;
+                        if (!filtered.length) return null;
 
-                              return (
-                                <button
-                                  id={`toc-${l.firstPage}`}
-                                  key={u.unit + "::" + l.title}
-                                  onClick={() => {
-                                    const el = document.getElementById(
-                                      `page-${l.firstPage}`
-                                    );
-                                    if (el)
+                        return (
+                          <div key={u.unit}>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                fontSize: 13,
+                                color: "#111827",
+                                marginBottom: 6,
+                              }}
+                            >
+                              {u.unit || "Unit"}
+                            </div>
+
+                            <div style={{ display: "grid", gap: 4 }}>
+                              {filtered.map((l) => {
+                                const isActive = currentPage === l.firstPage;
+
+                                const handleClick = (e) => {
+                                  e.preventDefault();
+                                  const targetId = `page-${l.firstPage}`;
+                                  setCurrentPage(l.firstPage);
+                                  const doScroll = () => {
+                                    const el = document.getElementById(targetId);
+                                    if (el) {
                                       el.scrollIntoView({
                                         behavior: "smooth",
                                         block: "start",
+                                        inline: "nearest",
                                       });
-                                  }}
-                                  title={`Go to page ${l.firstPage}`}
-                                  style={{
-                                    textAlign: "left",
-                                    cursor: "pointer",
-                                    fontSize: 12,
-                                    border: `1px solid ${isActive
-                                        ? effectiveTheme?.accent || "#2563eb"
-                                        : "#e5e7eb"
-                                      }`,
-                                    borderLeft: `6px solid ${isActive
-                                        ? effectiveTheme?.accent || "#2563eb"
-                                        : " #3333ff"
-                                      }`,
-                                    borderRadius: 10,
-                                    padding: "10px 12px",
-                                    background: isActive
-                                      ? "rgba(37,99,235,0.07)"
-                                      : "#fff",
-                                    color: isActive ? "#0f172a" : "#334155",
-                                    boxShadow: isActive
-                                      ? "0 2px 8px rgba(37,99,235,.15)"
-                                      : "none",
-                                  }}
-                                >
-                                  <div
+                                    }
+                                  };
+                                  requestAnimationFrame(doScroll);
+                                  setTimeout(doScroll, 0);
+                                };
+
+                                return (
+                                  <button
+                                    type="button"
+                                    id={`toc-${l.firstPage}`}
+                                    key={u.unit + "::" + l.title}
+                                    onClick={handleClick}
+                                    title={l.title ? l.title : `Go to page ${l.firstPage}`}
                                     style={{
-                                      fontWeight: 700,
-                                      whiteSpace: "nowrap",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
+                                      textAlign: "left",
+                                      cursor: "pointer",
+                                      fontSize: 12,
+                                      border: `1px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#e5e7eb"
+                                        }`,
+                                      borderLeft: `6px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#3333ff"
+                                        }`,
+                                      borderRadius: 10,
+                                      padding: "10px 12px",
+                                      background: isActive ? "rgba(37,99,235,0.07)" : "#fff",
+                                      color: isActive ? "#0f172a" : "#334155",
+                                      boxShadow: isActive ? "0 2px 8px rgba(37,99,235,.15)" : "none",
                                     }}
                                   >
-                                    {l.title || "Lesson"}
-                                  </div>
-                                  <div style={{ fontSize: 11, opacity: 0.7 }}>
-                                    Page {l.firstPage}
-                                  </div>
-                                </button>
-                              );
-                            })}
+                                    <div
+                                      style={{
+                                        fontWeight: 700,
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                      }}
+                                    >
+                                      {l.title}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    });
+                        );
+                      });
                   })()}
                 </div>
+
               </aside>
+
               {zoomSrc ? (
                 <ImageMagnifierOverlay
                   src={zoomSrc}
@@ -2515,10 +3073,51 @@ export default function BookDetailsPage() {
               editable={showEditorPanel}
               imageUrl={topImageUrl}
               onImageClick={(src) => setZoomSrc(src)}
+              bgScope={bgScope}
+              selectedPage={selectedPage}
+              onSelectPage={setSelectedPage}
+              bgDisabledPages={bgDisabledPages}
             />
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+
+
+
+function createWatermarkedBackgroundSVG({
+  imageUrl,               // data URL of uploaded image (required)
+  text = "TBM+",
+  opacity = 0.12,
+  gap = 220,              // distance between repeats
+  size = 56,              // font size
+  angle = -30,            // rotation in degrees
+  fontFamily = "Inter,system-ui,Arial",
+}) {
+  const W = 2480, H = 3508;
+
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+   <g transform="translate(${W / 2}, ${H / 2}) rotate(${angle})">
+   <text
+     x="0" y="0"
+     text-anchor="middle" dominant-baseline="middle"
+     font-family="${fontFamily}" font-size="${size * 6}"
+     fill="#000" opacity="${opacity}" font-weight="700">
+     ${escapeXml(text)}
+   </text>
+ </g>
+    <clipPath id="full"><rect x="0" y="0" width="${W}" height="${H}"/></clipPath>
+  </defs>
+
+  <!-- Base uploaded image -->
+  <image href="${imageUrl}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" clip-path="url(#full)"/>
+  <!-- Watermark layer (diagonal, repeated) -->
+</svg>`.trim();
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
