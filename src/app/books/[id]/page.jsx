@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import ReactDOM from "react-dom";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -9,6 +10,297 @@ import TextFormat from "@/components/format/TextFormat";
 
 const API_BASE = "https://tbmplus-backend.ultimeet.io";
 
+/* ===========================
+   Fullscreen Image Magnifier (viewer for read-mode)
+=========================== */
+function ImageMagnifierOverlay({
+  src,
+  onClose,
+  minScale = 0.5,
+  maxScale = 8,
+  initialScale = 1,
+}) {
+  const wrapRef = React.useRef(null);
+  const imgRef = React.useRef(null);
+  const [scale, setScale] = React.useState(initialScale);
+  const [tx, setTx] = React.useState(0);
+  const [ty, setTy] = React.useState(0);
+  const [panning, setPanning] = React.useState(false);
+  const panStart = React.useRef({ x: 0, y: 0, tx0: 0, ty0: 0 });
+
+  // touch pinch state
+  const pinchRef = React.useRef({
+    active: false,
+    startDist: 0,
+    startScale: initialScale,
+    centerX: 0,
+    centerY: 0,
+  });
+
+  React.useEffect(() => {
+    // lock scroll
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose?.();
+      if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "=")) {
+        e.preventDefault();
+        zoomAtCenter(1.15);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "-") {
+        e.preventDefault();
+        zoomAtCenter(1 / 1.15);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "0") {
+        e.preventDefault();
+        resetView();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  function resetView() {
+    setScale(1);
+    setTx(0);
+    setTy(0);
+  }
+
+  function zoomAtCenter(factor) {
+    const box = wrapRef.current?.getBoundingClientRect();
+    const cx = box ? box.left + box.width / 2 : window.innerWidth / 2;
+    const cy = box ? box.top + box.height / 2 : window.innerHeight / 2;
+    zoomAtPoint(factor, cx, cy);
+  }
+
+  function zoomAtPoint(factor, clientX, clientY) {
+    const img = imgRef.current;
+    const wrap = wrapRef.current;
+    if (!img || !wrap) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const px = clientX - rect.left; // point inside wrapper
+    const py = clientY - rect.top;
+
+    const newScale = clamp(scale * factor, minScale, maxScale);
+
+    // adjust translate so that (px,py) stays under cursor after zoom
+    const dx = px - (px - tx) * (newScale / scale);
+    const dy = py - (py - ty) * (newScale / scale);
+    setScale(newScale);
+    setTx(dx);
+    setTy(dy);
+  }
+
+  // wheel zoom
+  function onWheel(e) {
+    e.preventDefault();
+    const direction = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+    zoomAtPoint(direction, e.clientX, e.clientY);
+  }
+
+  // mouse pan
+  function onMouseDown(e) {
+    if (e.button !== 0) return;
+    setPanning(true);
+    panStart.current = { x: e.clientX, y: e.clientY, tx0: tx, ty0: ty };
+  }
+  function onMouseMove(e) {
+    if (!panning) return;
+    const dx = e.clientX - panStart.current.x;
+    const dy = e.clientY - panStart.current.y;
+    setTx(panStart.current.tx0 + dx);
+    setTy(panStart.current.ty0 + dy);
+  }
+  function onMouseUp() {
+    setPanning(false);
+  }
+
+  // double click: toggle 1x <-> 2x at cursor
+  function onDoubleClick(e) {
+    e.preventDefault();
+    const targetScale = scale < 2 ? 2 : 1;
+    const factor = targetScale / scale;
+    zoomAtPoint(factor, e.clientX, e.clientY);
+  }
+
+  // touch: pinch to zoom + drag to pan
+  function getTouches(e) {
+    return Array.from(e.touches || []);
+  }
+  function dist(a, b) {
+    const dx = a.clientX - b.clientX,
+      dy = a.clientY - b.clientY;
+    return Math.hypot(dx, dy);
+  }
+  function center(a, b) {
+    return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+  }
+
+  function onTouchStart(e) {
+    if (e.touches.length === 2) {
+      const [t1, t2] = getTouches(e);
+      pinchRef.current.active = true;
+      pinchRef.current.startDist = dist(t1, t2);
+      pinchRef.current.startScale = scale;
+      const c = center(t1, t2);
+      pinchRef.current.centerX = c.x;
+      pinchRef.current.centerY = c.y;
+    } else if (e.touches.length === 1) {
+      // start panning
+      setPanning(true);
+      const t = e.touches[0];
+      panStart.current = { x: t.clientX, y: t.clientY, tx0: tx, ty0: ty };
+    }
+  }
+  function onTouchMove(e) {
+    if (pinchRef.current.active && e.touches.length === 2) {
+      e.preventDefault();
+      const [t1, t2] = getTouches(e);
+      const d = dist(t1, t2);
+      const factor = d / (pinchRef.current.startDist || d);
+      const target = clamp(
+        pinchRef.current.startScale * factor,
+        minScale,
+        maxScale
+      );
+      const f = target / scale;
+      zoomAtPoint(f, pinchRef.current.centerX, pinchRef.current.centerY);
+    } else if (panning && e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = t.clientX - panStart.current.x;
+      const dy = t.clientY - panStart.current.y;
+      setTx(panStart.current.tx0 + dx);
+      setTy(panStart.current.ty0 + dy);
+    }
+  }
+  function onTouchEnd() {
+    if (pinchRef.current.active) {
+      pinchRef.current.active = false;
+    }
+    setPanning(false);
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,.7)",
+        zIndex: 9999,
+        display: "grid",
+        placeItems: "center",
+        cursor: panning ? "grabbing" : "default",
+      }}
+    >
+      {/* Toolbar */}
+      <div
+        style={{
+          position: "fixed",
+          top: 12,
+          right: 12,
+          display: "flex",
+          gap: 8,
+          zIndex: 10000,
+        }}
+      >
+        <button
+          onClick={() => zoomAtCenter(1 / 1.15)}
+          style={btnStyle}
+          title="Zoom out (Ctrl/Cmd -)"
+        >
+          –
+        </button>
+        <button
+          onClick={() => zoomAtCenter(1.15)}
+          style={btnStyle}
+          title="Zoom in (Ctrl/Cmd +)"
+        >
+          +
+        </button>
+        <button onClick={resetView} style={btnStyle} title="Reset (Ctrl/Cmd 0)">
+          Reset
+        </button>
+        <button
+          onClick={onClose}
+          style={{ ...btnStyle, background: "#ef4444", color: "#fff" }}
+          title="Close (Esc)"
+        >
+          Close
+        </button>
+      </div>
+
+      {/* Canvas */}
+      <div
+        ref={wrapRef}
+        onWheel={onWheel}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        onDoubleClick={onDoubleClick}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{
+          position: "relative",
+          width: "min(92vw, 1200px)",
+          height: "min(88vh, 90vh)",
+          background: "#0b0d10",
+          borderRadius: 12,
+          overflow: "hidden",
+          border: "1px solid #334155",
+          touchAction: "none",
+          userSelect: "none",
+          cursor: panning ? "grabbing" : "grab",
+        }}
+      >
+        <img
+          ref={imgRef}
+          src={src}
+          alt="Zoom"
+          draggable={false}
+          style={{
+            transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+            transformOrigin: "0 0",
+            willChange: "transform",
+            maxWidth: "unset",
+            maxHeight: "unset",
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+const btnStyle = {
+  height: 36,
+  padding: "0 12px",
+  borderRadius: 8,
+  border: "1px solid #e5e7eb",
+  background: "#fff",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+/* ===========================
+   API helper
+=========================== */
 async function jfetch(path, { method = "GET", body } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -24,6 +316,9 @@ async function jfetch(path, { method = "GET", body } = {}) {
   return res.json();
 }
 
+/* ===========================
+   Content helpers
+=========================== */
 function normalizeQuestions(q) {
   if (!q) return "";
   if (Array.isArray(q))
@@ -69,16 +364,22 @@ function blocksFromLesson(lesson) {
     Array.isArray(lesson?.contents) && lesson.contents.length
       ? lesson.contents
       : lesson?.contents && typeof lesson.contents === "object"
-        ? [lesson.contents]
-        : [lesson];
+      ? [lesson.contents]
+      : [lesson];
 
   const blocks = [];
   items.forEach((it) => {
     const textVal = pickFirst(it, ["text", "body", "content.text"]);
-    const summaryVal = pickFirst(it, ["content_summary", "summary", "content.content_summary"]);
+    const summaryVal = pickFirst(it, [
+      "content_summary",
+      "summary",
+      "content.content_summary",
+    ]);
     const quesVal = pickFirst(it, ["questions", "content.questions"]);
     const text = textVal ? `${String(textVal).trim()}` : "";
-    const summary = summaryVal ? `#### Content Summary\n\n${String(summaryVal).trim()}` : "";
+    const summary = summaryVal
+      ? `#### Content Summary\n\n${String(summaryVal).trim()}`
+      : "";
 
     const qRaw = normalizeQuestions(quesVal);
     const qSpaced = addOptionSpacing(qRaw);
@@ -89,7 +390,9 @@ function blocksFromLesson(lesson) {
     if (!block && items.length === 1) {
       const lText = pickFirst(lesson, ["text", "generated_prompt"]);
       const lSum = pickFirst(lesson, ["content_summary", "lesson_description"]);
-      const lQ = addOptionSpacing(normalizeQuestions(pickFirst(lesson, ["questions"])));
+      const lQ = addOptionSpacing(
+        normalizeQuestions(pickFirst(lesson, ["questions"]))
+      );
       const t = lText ? `${String(lText).trim()}` : "";
       const s = lSum ? `#### Content Summary\n\n${String(lSum).trim()}` : "";
       const q = lQ ? `#### Questions\n\n${lQ}` : "";
@@ -101,7 +404,10 @@ function blocksFromLesson(lesson) {
 }
 
 function _escapeHtml(str) {
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 function stripScripts(html = "") {
   return String(html).replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
@@ -121,7 +427,8 @@ function renderTemplate(html, ctx) {
 function extractHexColorsFromHTML(html) {
   if (!html) return [];
   const colors = new Set();
-  const re = /(?:fill|stroke|stop-color)\s*[:=]\s*["']?\s*(#[0-9a-fA-F]{3,6})\b/gi;
+  const re =
+    /(?:fill|stroke|stop-color)\s*[:=]\s*["']?\s*(#[0-9a-fA-F]{3,6})\b/gi;
   let m;
   while ((m = re.exec(html))) {
     colors.add(m[1].toLowerCase());
@@ -149,6 +456,9 @@ function readMeta(html) {
   return { unit, title, className: klass };
 }
 
+/* ===========================
+   Convert book + theme → array of page HTML
+=========================== */
 function bookToPagesWithTheme(book, theme) {
   const tempPages = [];
   const page_bg = theme?.page_bg || "#ffffff";
@@ -161,7 +471,7 @@ function bookToPagesWithTheme(book, theme) {
     Array.isArray(book?.units) && book.units.length
       ? book.units
       : Array.isArray(sj?.units)
-        ? sj.units.map((u) => ({
+      ? sj.units.map((u) => ({
           title: u.title,
           number_of_pages: u.number_of_pages,
           description: u.description || "",
@@ -172,10 +482,11 @@ function bookToPagesWithTheme(book, theme) {
             text: l.contents?.text,
           })),
         }))
-        : [];
+      : [];
 
   let pageCounter = 1;
-  const className = pickFirst(book, ["class_name", "class", "grade", "standard"]) || "";
+  const className =
+    pickFirst(book, ["class_name", "class", "grade", "standard"]) || "";
 
   function wrap(bodyHtml, ctx = {}) {
     const metaProbe = `
@@ -217,20 +528,23 @@ function bookToPagesWithTheme(book, theme) {
       overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%
     `;
 
-      const lessonChipsInner = (u.lessons || []).map((l, li) => {
-        const num = `${ui + 1}.${li + 1}`;
-        const title = l.title || `Lesson ${li + 1}`;
-        return `
+      const lessonChipsInner = (u.lessons || [])
+        .map((l, li) => {
+          const num = `${ui + 1}.${li + 1}`;
+          const title = l.title || `Lesson ${li + 1}`;
+          return `
         <span style="${chipBase}">
           <span style="${chipNum}">${num}</span>
           <span style="${chipTitle}">${_escapeHtml(title)}</span>
         </span>
       `;
-      }).join("");
+        })
+        .join("");
 
-      const lessonChips = (u.lessons && u.lessons.length)
-        ? lessonChipsInner
-        : `<span style="${chipBase};opacity:.7;background:#f8fafc">No lessons</span>`;
+      const lessonChips =
+        u.lessons && u.lessons.length
+          ? lessonChipsInner
+          : `<span style="${chipBase};opacity:.7;background:#f8fafc">No lessons</span>`;
 
       const rowBg = ui % 2 === 0 ? "rgba(0,0,0,.02)" : page_bg;
 
@@ -302,13 +616,16 @@ function bookToPagesWithTheme(book, theme) {
         </tr>
       </thead>
       <tbody>
-        ${tocRows || `
+        ${
+          tocRows ||
+          `
           <tr>
             <td colspan="3" style="padding:16px 12px;color:#64748b;text-align:center;border-top:1px dashed #e5e7eb;">
               No units available
             </td>
           </tr>
-        `}
+        `
+        }
       </tbody>
     </table>
   </div>
@@ -336,19 +653,22 @@ function bookToPagesWithTheme(book, theme) {
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap
   `;
 
-    const lessonsChipsHTML = (u.lessons || []).map((l, li) => {
-      const num = `${ui + 1}.${li + 1}`;
-      const title = l.title || `Lesson ${li + 1}`;
-      return `
+    const lessonsChipsHTML = (u.lessons || [])
+      .map((l, li) => {
+        const num = `${ui + 1}.${li + 1}`;
+        const title = l.title || `Lesson ${li + 1}`;
+        return `
       <div style="${lessonChipBase}">
         <span style="${lessonNumBadge}">${num}</span>
         <span style="${lessonTitleStyle}">${_escapeHtml(title)}</span>
       </div>
     `;
-    }).join("");
+      })
+      .join("");
 
-    const lessonsBlock = (u.lessons && u.lessons.length)
-      ? `
+    const lessonsBlock =
+      u.lessons && u.lessons.length
+        ? `
       <div style="
         display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;
         width:100%;box-sizing:border-box;max-width:100%;overflow:hidden
@@ -356,7 +676,7 @@ function bookToPagesWithTheme(book, theme) {
         ${lessonsChipsHTML}
       </div>
     `
-      : `<p style="margin:0;color:#64748b;">No lessons</p>`;
+        : `<p style="margin:0;color:#64748b;">No lessons</p>`;
 
     const unitHeroBody = [
       `<section style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;background-color:${page_bg};">
@@ -364,12 +684,13 @@ function bookToPagesWithTheme(book, theme) {
         <h1 style="margin:0 0 10px 0;font-size:2.5rem;font-weight:800;letter-spacing:.2px;color:${text};">
           ${_escapeHtml(uTitle)}
         </h1>
-        ${uDesc
-        ? `<p style="margin:14px auto 0;max-width:720px;color:${text};line-height:1.7;">
+        ${
+          uDesc
+            ? `<p style="margin:14px auto 0;max-width:720px;color:${text};line-height:1.7;">
                  ${_escapeHtml(uDesc)}
                </p>`
-        : ``
-      }
+            : ``
+        }
       </div>
     </section>`,
 
@@ -384,8 +705,6 @@ function bookToPagesWithTheme(book, theme) {
 
     wrap(unitHeroBody, { unit: uTitle });
 
-
-
     (u.lessons || []).forEach((l, li) => {
       const lTitle = l.title || `Lesson ${li + 1}`;
       const lPages = l.number_of_pages ?? "—";
@@ -395,22 +714,25 @@ function bookToPagesWithTheme(book, theme) {
         blocks.forEach((b, bi) => {
           const titleTop =
             bi === 0
-              ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(uTitle)} • ${ui + 1
-              }.${li + 1} ${_escapeHtml(lTitle)}</h3>
+              ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(
+                  uTitle
+                )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
        <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
-              : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(lTitle)} — Page ${bi + 1}</h3>`;
+              : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(
+                  lTitle
+                )} — Page ${bi + 1}</h3>`;
 
           const safeHtml = stripScripts(b);
 
           const body = `${titleTop}
   <div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
           wrap(body, { unit: uTitle, title: lTitle });
-          ;
         });
       } else {
         const body = `
-          <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(uTitle)} • ${ui + 1
-          }.${li + 1} ${_escapeHtml(lTitle)}</h3>
+          <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(
+            uTitle
+          )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
           <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
           <div style="color:${text}"><em>No content available yet.</em></div>`;
         wrap(body, { unit: uTitle, title: lTitle });
@@ -419,9 +741,14 @@ function bookToPagesWithTheme(book, theme) {
   });
 
   const total = tempPages.length;
-  return tempPages.map((html) => html.replace(/\{\{\s*total\s*\}\}/g, String(total)));
+  return tempPages.map((html) =>
+    html.replace(/\{\{\s*total\s*\}\}/g, String(total))
+  );
 }
 
+/* ===========================
+   Theme Panel
+=========================== */
 function ThemePanel({
   selectedThemeKey,
   setSelectedThemeKey,
@@ -451,18 +778,41 @@ function ThemePanel({
         padding: 12,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>Theme settings</div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 8,
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>
+          Theme settings
+        </div>
         <button
           onClick={onClose}
-          style={{ border: "1px solid #e5e7eb", background: "#fff", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}
+          style={{
+            border: "1px solid #e5e7eb",
+            background: "#fff",
+            borderRadius: 8,
+            padding: "6px 10px",
+            cursor: "pointer",
+          }}
           title="Close theme panel"
         >
           Close
         </button>
       </div>
 
-      <label style={{ display: "grid", gap: 6, marginBottom: 12, fontSize: 12, color: "#334155" }}>
+      <label
+        style={{
+          display: "grid",
+          gap: 6,
+          marginBottom: 12,
+          fontSize: 12,
+          color: "#334155",
+        }}
+      >
         <span style={{ fontWeight: 700 }}>Choose image (2480 x 3508)</span>
         <input
           type="file"
@@ -483,7 +833,15 @@ function ThemePanel({
         />
       </label>
 
-      <label style={{ display: "grid", gap: 6, marginBottom: 12, fontSize: 12, color: "#334155" }}>
+      <label
+        style={{
+          display: "grid",
+          gap: 6,
+          marginBottom: 12,
+          fontSize: 12,
+          color: "#334155",
+        }}
+      >
         <span style={{ fontWeight: 700 }}>Choose theme</span>
         <select
           value={selectedThemeKey}
@@ -511,7 +869,9 @@ function ThemePanel({
       </label>
 
       <div style={{ fontSize: 12, color: "#334155", display: "grid", gap: 12 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <label
+          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+        >
           <input
             type="checkbox"
             checked={apply.page_bg}
@@ -535,27 +895,46 @@ function ThemePanel({
                 height: 14,
                 borderRadius: 4,
                 border: "1px solid #e2e8f0",
-                background: custom.page_bg || effectiveTheme?.page_bg || "#ffffff",
+                background:
+                  custom.page_bg || effectiveTheme?.page_bg || "#ffffff",
               }}
             />
             <input
               type="color"
               value={custom.page_bg || effectiveTheme?.page_bg || "#ffffff"}
-              onChange={(e) => setCustom((c) => ({ ...c, page_bg: e.target.value }))}
-              style={{ width: 32, height: 20, border: "none", background: "transparent", cursor: "pointer" }}
+              onChange={(e) =>
+                setCustom((c) => ({ ...c, page_bg: e.target.value }))
+              }
+              style={{
+                width: 32,
+                height: 20,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+              }}
               title="Pick page/body background"
             />
             <button
               onClick={() => setCustom((c) => ({ ...c, page_bg: "" }))}
-              style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
+              style={{
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                borderRadius: 6,
+                padding: "2px 6px",
+                cursor: "pointer",
+              }}
             >
               Reset
             </button>
           </span>
-          <span style={{ color: "#64748b" }}>Body background is always same as page background.</span>
+          <span style={{ color: "#64748b" }}>
+            Body background is always same as page background.
+          </span>
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <label
+          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+        >
           <input
             type="checkbox"
             checked={apply.text}
@@ -586,19 +965,33 @@ function ThemePanel({
               type="color"
               value={custom.text || effectiveTheme?.text || "#0f172a"}
               onChange={(e) => setCustom((c) => ({ ...c, text: e.target.value }))}
-              style={{ width: 32, height: 20, border: "none", background: "transparent", cursor: "pointer" }}
+              style={{
+                width: 32,
+                height: 20,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+              }}
               title="Pick text color"
             />
             <button
               onClick={() => setCustom((c) => ({ ...c, text: "" }))}
-              style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
+              style={{
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                borderRadius: 6,
+                padding: "2px 6px",
+                cursor: "pointer",
+              }}
             >
               Reset
             </button>
           </span>
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <label
+          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+        >
           <input
             type="checkbox"
             checked={apply.accent}
@@ -628,24 +1021,42 @@ function ThemePanel({
             <input
               type="color"
               value={custom.accent || effectiveTheme?.accent || "#2563eb"}
-              onChange={(e) => setCustom((c) => ({ ...c, accent: e.target.value }))}
-              style={{ width: 32, height: 20, border: "none", background: "transparent", cursor: "pointer" }}
+              onChange={(e) =>
+                setCustom((c) => ({ ...c, accent: e.target.value }))
+              }
+              style={{
+                width: 32,
+                height: 20,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+              }}
               title="Pick accent color"
             />
             <button
               onClick={() => setCustom((c) => ({ ...c, accent: "" }))}
-              style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
+              style={{
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                borderRadius: 6,
+                padding: "2px 6px",
+                cursor: "pointer",
+              }}
             >
               Reset
             </button>
           </span>
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <label
+          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+        >
           <input
             type="checkbox"
             checked={apply.accent2}
-            onChange={(e) => setApply((s) => ({ ...s, accent2: e.target.checked }))}
+            onChange={(e) =>
+              setApply((s) => ({ ...s, accent2: e.target.checked }))
+            }
           />
           <span style={{ fontWeight: 700, minWidth: 140 }}>Apply accent2</span>
           <span
@@ -665,19 +1076,34 @@ function ThemePanel({
                 height: 14,
                 borderRadius: 4,
                 border: "1px solid #e2e8f0",
-                background: custom.accent2 || effectiveTheme?.accent2 || "#60a5fa",
+                background:
+                  custom.accent2 || effectiveTheme?.accent2 || "#60a5fa",
               }}
             />
             <input
               type="color"
               value={custom.accent2 || effectiveTheme?.accent2 || "#60a5fa"}
-              onChange={(e) => setCustom((c) => ({ ...c, accent2: e.target.value }))}
-              style={{ width: 32, height: 20, border: "none", background: "transparent", cursor: "pointer" }}
+              onChange={(e) =>
+                setCustom((c) => ({ ...c, accent2: e.target.value }))
+              }
+              style={{
+                width: 32,
+                height: 20,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+              }}
               title="Pick accent2 color"
             />
             <button
               onClick={() => setCustom((c) => ({ ...c, accent2: "" }))}
-              style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
+              style={{
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                borderRadius: 6,
+                padding: "2px 6px",
+                cursor: "pointer",
+              }}
             >
               Reset
             </button>
@@ -685,14 +1111,32 @@ function ThemePanel({
         </label>
 
         <div style={{ marginTop: 6, paddingTop: 8, borderTop: "1px solid #e2e8f0" }}>
-          <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>SVG colors</div>
+          <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
+            SVG colors
+          </div>
           {Object.keys(svgColorMap).length === 0 ? (
-            <div style={{ color: "#64748b", fontSize: 12 }}>No SVG colors detected in this theme.</div>
+            <div style={{ color: "#64748b", fontSize: 12 }}>
+              No SVG colors detected in this theme.
+            </div>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {Object.entries(svgColorMap).map(([orig, current]) => (
-                <label key={orig} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ minWidth: 120, fontFamily: "monospace", fontSize: 12 }}>
+                <label
+                  key={orig}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      minWidth: 120,
+                      fontFamily: "monospace",
+                      fontSize: 12,
+                    }}
+                  >
                     {orig.toLowerCase()}
                   </span>
                   <span
@@ -722,12 +1166,26 @@ function ThemePanel({
                         const v = e.target.value;
                         setSvgColorMap((m) => ({ ...m, [orig]: v }));
                       }}
-                      style={{ width: 32, height: 20, border: "none", background: "transparent", cursor: "pointer" }}
+                      style={{
+                        width: 32,
+                        height: 20,
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                      }}
                       title={`Replace ${orig}`}
                     />
                     <button
-                      onClick={() => setSvgColorMap((m) => ({ ...m, [orig]: orig }))}
-                      style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
+                      onClick={() =>
+                        setSvgColorMap((m) => ({ ...m, [orig]: orig }))
+                      }
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        background: "#fff",
+                        borderRadius: 6,
+                        padding: "2px 6px",
+                        cursor: "pointer",
+                      }}
                       title="Reset to original"
                     >
                       Reset
@@ -740,23 +1198,152 @@ function ThemePanel({
         </div>
 
         <div style={{ marginTop: 6, color: "#64748b" }}>
-          Toggle which theme parts apply. Unchecked values fall back to safe defaults.
+          Toggle which theme parts apply. Unchecked values fall back to safe
+          defaults.
         </div>
       </div>
     </aside>
   );
 }
 
+/* ===========================
+   Editor Panel (with inline Magnification/Resize overlay)
+=========================== */
 function EditorPanel({ onClose }) {
   const fonts = ["Arial", "Inter", "Times New Roman", "Georgia", "Roboto"];
   const sizes = [10, 11, 12, 14, 16, 18, 20, 24];
 
+  // file picker
+  const fileRef = React.useRef(null);
+  const [objectUrls, setObjectUrls] = React.useState([]);
+
+  // track last caret position + last editable element
+  const lastRangeRef = React.useRef(null);
+  const lastEditableElRef = React.useRef(null);
+
+  // selected image state
+  const [selectedImg, setSelectedImg] = React.useState(null);
+  const [imgWidth, setImgWidth] = React.useState(400);
+
+  // overlay state (for inline resize/zoom handles)
+  const [overlayRect, setOverlayRect] = React.useState(null);
+  const resizingRef = React.useRef(null); // {dir,startX,startY,startW,startH,naturalRatio}
+  const draggingRef = React.useRef(null); // {startX,startY,startLeft,startTop}
+
+  function saveCurrentRangeIfEditable() {
+    const sel = window.getSelection && window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    const root = range.startContainer
+      ? (range.startContainer.nodeType === 1
+          ? range.startContainer
+          : range.startContainer.parentElement
+        )?.closest('[data-editable="true"]')
+      : null;
+    if (root) {
+      lastRangeRef.current = range.cloneRange();
+      lastEditableElRef.current = root;
+    }
+  }
+
+  function placeCaretAtEnd(el) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      lastRangeRef.current = range.cloneRange();
+      lastEditableElRef.current = el;
+    } catch {}
+  }
+
+  // maintain object URL cleanup
+  React.useEffect(() => {
+    return () => {
+      objectUrls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [objectUrls]);
+
+  // click/select listeners (select image -> show overlay)
+  React.useEffect(() => {
+    function onDocClick(e) {
+      const t = e.target;
+      if (!t) return;
+
+      const editableRoot = t.closest?.('[data-editable="true"]');
+      if (editableRoot) {
+        setTimeout(() => {
+          saveCurrentRangeIfEditable();
+          if (t.tagName === "IMG") {
+            const img = t;
+            setSelectedImg(img);
+            const w =
+              (img.style.width && parseInt(img.style.width, 10)) ||
+              Math.min(
+                img.naturalWidth || 400,
+                editableRoot.clientWidth || 720
+              );
+            setImgWidth(w);
+            updateOverlayRect(img);
+          } else {
+            setSelectedImg(null);
+            setOverlayRect(null);
+          }
+        }, 0);
+      } else {
+        setSelectedImg(null);
+        setOverlayRect(null);
+      }
+    }
+
+    function onSelectionChange() {
+      saveCurrentRangeIfEditable();
+    }
+
+    document.addEventListener("click", onDocClick);
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("selectionchange", onSelectionChange);
+    };
+  }, []);
+
+  // sync overlay on scroll/resize
+  React.useEffect(() => {
+    function onWin() {
+      if (selectedImg) updateOverlayRect(selectedImg);
+    }
+    window.addEventListener("scroll", onWin, true);
+    window.addEventListener("resize", onWin);
+    return () => {
+      window.removeEventListener("scroll", onWin, true);
+      window.removeEventListener("resize", onWin);
+    };
+  }, [selectedImg]);
+
+  function updateOverlayRect(img) {
+    if (!img) {
+      setOverlayRect(null);
+      return;
+    }
+    const r = img.getBoundingClientRect();
+    setOverlayRect({
+      left: r.left + window.scrollX,
+      top: r.top + window.scrollY,
+      width: r.width,
+      height: r.height,
+    });
+  }
+
+  // execCommand helpers
   function cmd(command, value = null) {
     try {
       document.execCommand(command, false, value);
       const active = document.querySelector('[data-editable="true"]');
       if (active) active.focus();
-    } catch { }
+    } catch {}
   }
 
   function makeLink() {
@@ -764,7 +1351,6 @@ function EditorPanel({ onClose }) {
     if (!url) return;
     cmd("createLink", url);
   }
-
   function setFont(e) {
     cmd("fontName", e.target.value);
   }
@@ -778,6 +1364,281 @@ function EditorPanel({ onClose }) {
   }
   function setHilite(e) {
     cmd("hiliteColor", e.target.value);
+  }
+
+  // insert image at last caret
+  function insertImageFromFile(f) {
+    const editable =
+      lastEditableElRef.current ||
+      document.activeElement?.closest?.('[data-editable="true"]');
+    if (!editable) return;
+
+    const url = URL.createObjectURL(f);
+    setObjectUrls((arr) => [...arr, url]);
+
+    const html =
+      `<img src="${url}" class="tbm-img" ` +
+      `style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;" />`;
+
+    // Focus editable first, then restore range
+    editable.focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+
+    if (lastRangeRef.current) {
+      try {
+        sel.addRange(lastRangeRef.current);
+      } catch {
+        placeCaretAtEnd(editable);
+      }
+    } else {
+      placeCaretAtEnd(editable);
+    }
+
+    try {
+      document.execCommand("insertHTML", false, html);
+    } catch {
+      editable.insertAdjacentHTML("beforeend", html);
+    }
+
+    editable.focus();
+    saveCurrentRangeIfEditable();
+  }
+
+  function onPickImageClick() {
+    if (fileRef.current) fileRef.current.click();
+  }
+  function onFileChange(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    insertImageFromFile(f);
+    e.target.value = "";
+  }
+
+  // Resize logic
+  function beginResize(dir, e) {
+    if (!selectedImg) return;
+    e.preventDefault();
+    const r = selectedImg.getBoundingClientRect();
+    resizingRef.current = {
+      dir,
+      startX: e.pageX,
+      startY: e.pageY,
+      startW: r.width,
+      startH: r.height,
+      naturalRatio:
+        (selectedImg.naturalWidth || r.width) /
+        (selectedImg.naturalHeight || r.height),
+    };
+    document.addEventListener("mousemove", onResizing);
+    document.addEventListener("mouseup", endResize, { once: true });
+  }
+  function onResizing(e) {
+    const s = resizingRef.current;
+    if (!s || !selectedImg) return;
+    const dx = e.pageX - s.startX;
+    const dy = e.pageY - s.startY;
+    let w = s.startW,
+      h = s.startH;
+
+    if (s.dir.includes("e")) w = s.startW + dx;
+    if (s.dir.includes("w")) w = s.startW - dx;
+    if (s.dir.includes("s")) h = s.startH + dy;
+    if (s.dir.includes("n")) h = s.startH - dy;
+
+    if (e.shiftKey) {
+      const ratio = s.naturalRatio || s.startW / s.startH;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        h = w / ratio;
+      } else {
+        w = h * ratio;
+      }
+    }
+
+    w = Math.max(80, w);
+    h = Math.max(80, h);
+
+    selectedImg.style.width = `${w}px`;
+    selectedImg.style.height = `${h}px`;
+    selectedImg.style.maxWidth = "none";
+
+    setImgWidth(w);
+    updateOverlayRect(selectedImg);
+  }
+  function endResize() {
+    document.removeEventListener("mousemove", onResizing);
+    resizingRef.current = null;
+    saveCurrentRangeIfEditable();
+  }
+
+  // Drag bar visual move (for inline content we just show visual feedback)
+  function beginDrag(e) {
+    if (!selectedImg || !overlayRect) return;
+    e.preventDefault();
+    const r = selectedImg.getBoundingClientRect();
+    draggingRef.current = {
+      startX: e.pageX,
+      startY: e.pageY,
+      startLeft: r.left + window.scrollX,
+      startTop: r.top + window.scrollY,
+    };
+    document.addEventListener("mousemove", onDragging);
+    document.addEventListener("mouseup", endDrag, { once: true });
+  }
+  function onDragging(e) {
+    const s = draggingRef.current;
+    if (!s) return;
+    const dx = e.pageX - s.startX;
+    const dy = e.pageY - s.startY;
+    setOverlayRect((rect) =>
+      rect
+        ? {
+            ...rect,
+            left: s.startLeft + dx,
+            top: s.startTop + dy,
+          }
+        : rect
+    );
+  }
+  function endDrag() {
+    document.removeEventListener("mousemove", onDragging);
+    draggingRef.current = null;
+    updateOverlayRect(selectedImg);
+  }
+
+  // Wheel & keyboard zoom (Ctrl/Cmd wheel, +/-, 0)
+  React.useEffect(() => {
+    if (!selectedImg) return;
+    function onWheel(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+      const currentW =
+        selectedImg.getBoundingClientRect().width || imgWidth || 400;
+      const w = Math.max(80, currentW * factor);
+      selectedImg.style.width = `${w}px`;
+      selectedImg.style.height = "auto";
+      selectedImg.style.maxWidth = "none";
+      setImgWidth(w);
+      updateOverlayRect(selectedImg);
+    }
+    function onKey(e) {
+      if (!selectedImg) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "=")) {
+        e.preventDefault();
+        const currentW =
+          selectedImg.getBoundingClientRect().width || imgWidth || 400;
+        const w = Math.max(80, currentW * 1.1);
+        selectedImg.style.width = `${w}px`;
+        selectedImg.style.height = "auto";
+        setImgWidth(w);
+        updateOverlayRect(selectedImg);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "-") {
+        e.preventDefault();
+        const currentW =
+          selectedImg.getBoundingClientRect().width || imgWidth || 400;
+        const w = Math.max(80, currentW / 1.1);
+        selectedImg.style.width = `${w}px`;
+        selectedImg.style.height = "auto";
+        setImgWidth(w);
+        updateOverlayRect(selectedImg);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "0") {
+        e.preventDefault();
+        const w = selectedImg.naturalWidth || 400;
+        selectedImg.style.width = `${w}px`;
+        selectedImg.style.height = "auto";
+        setImgWidth(w);
+        updateOverlayRect(selectedImg);
+      }
+    }
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [selectedImg, imgWidth]);
+
+  // Overlay UI (portal)
+  function Overlay() {
+    if (!selectedImg || !overlayRect) return null;
+    const { left, top, width, height } = overlayRect;
+    const boxStyle = {
+      position: "absolute",
+      left,
+      top,
+      width,
+      height,
+      border: "2px solid #2563eb",
+      borderRadius: 6,
+      boxSizing: "border-box",
+      pointerEvents: "none",
+      zIndex: 9998,
+    };
+    const handleBase = {
+      position: "absolute",
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      border: "2px solid #fff",
+      background: "#2563eb",
+      boxShadow: "0 0 0 1px #2563eb",
+      pointerEvents: "auto",
+    };
+    const mkHandle = (dir, style, cursor) => (
+      <div
+        key={dir}
+        onMouseDown={(e) => beginResize(dir, e)}
+        style={{ ...handleBase, ...style, cursor }}
+        title={`Resize ${dir.toUpperCase()} (Shift = lock ratio)`}
+      />
+    );
+
+    const handles = [
+      mkHandle("nw", { left: -6, top: -6 }, "nwse-resize"),
+      mkHandle("n", { left: width / 2 - 6, top: -6 }, "ns-resize"),
+      mkHandle("ne", { left: width - 6, top: -6 }, "nesw-resize"),
+      mkHandle("e", { left: width - 6, top: height / 2 - 6 }, "ew-resize"),
+      mkHandle("se", { left: width - 6, top: height - 6 }, "nwse-resize"),
+      mkHandle("s", { left: width / 2 - 6, top: height - 6 }, "ns-resize"),
+      mkHandle("sw", { left: -6, top: height - 6 }, "nesw-resize"),
+      mkHandle("w", { left: -6, top: height / 2 - 6 }, "ew-resize"),
+    ];
+
+    const dragBarStyle = {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: "100%",
+      height: 24,
+      background: "rgba(37,99,235,.15)",
+      cursor: "move",
+      pointerEvents: "auto",
+      borderBottom: "1px solid rgba(37,99,235,.4)",
+    };
+
+    return ReactDOM.createPortal(
+      <>
+        <div style={boxStyle} />
+        <div
+          style={{
+            position: "absolute",
+            left,
+            top,
+            width,
+            height,
+            zIndex: 9999,
+            pointerEvents: "none",
+          }}
+        >
+          <div style={dragBarStyle} onMouseDown={beginDrag} />
+          {handles}
+        </div>
+      </>,
+      document.body
+    );
   }
 
   const btn = (label, onClick, title) => (
@@ -812,14 +1673,46 @@ function EditorPanel({ onClose }) {
         padding: 12,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>Editor</div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>
+          Editor
+        </div>
         {btn("Close", onClose, "Close editor panel")}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          onChange={onFileChange}
+          style={{ display: "none" }}
+        />
+        {btn(
+          "Insert image",
+          onPickImageClick,
+          "Insert an image at the last clicked cursor spot"
+        )}
       </div>
 
       <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select onChange={setFont} style={{ height: 36, border: "1px solid #e5e7eb", borderRadius: 8, padding: "0 10px" }}>
+          <select
+            onChange={setFont}
+            style={{
+              height: 36,
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              padding: "0 10px",
+            }}
+          >
             {fonts.map((f) => (
               <option key={f} value={f}>
                 {f}
@@ -829,7 +1722,12 @@ function EditorPanel({ onClose }) {
           <select
             onChange={setSize}
             defaultValue={16}
-            style={{ height: 36, border: "1px solid #e5e7eb", borderRadius: 8, padding: "0 10px" }}
+            style={{
+              height: 36,
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              padding: "0 10px",
+            }}
           >
             {sizes.map((s) => (
               <option key={s} value={s}>
@@ -849,7 +1747,9 @@ function EditorPanel({ onClose }) {
             <input type="color" defaultValue="#111827" onChange={setColor} />
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "#334155", width: 72 }}>Highlight</span>
+            <span style={{ fontSize: 12, color: "#334155", width: 72 }}>
+              Highlight
+            </span>
             <input type="color" defaultValue="#ffff00" onChange={setHilite} />
           </label>
           {btn("Clear", () => cmd("removeFormat"), "Clear direct formatting")}
@@ -866,27 +1766,31 @@ function EditorPanel({ onClose }) {
           {btn("— Indent", () => cmd("outdent"), "Outdent")}
           {btn("+ Indent", () => cmd("indent"), "Indent")}
         </div>
-
-        <div style={{ fontSize: 12, color: "#64748b" }}>
-          Select text on the right and use controls here. Changes apply inline to the selected content.
-        </div>
       </div>
+
+      {/* Inline overlay with 8 handles + drag bar (replaces old side panel) */}
+      <Overlay />
     </aside>
   );
 }
 
+/* ===========================
+   Document Viewer
+=========================== */
 function DocView({
   pages,
   fontSize = 16,
   deviceDimensions = { width: 720, height: 520 },
   theme = null,
-  onPageInView = () => { },
+  onPageInView = () => {},
   editable = false,
   imageUrl = null,
+  onImageClick = () => {},
 }) {
   const pageWidth = Math.min(deviceDimensions.width, 860);
   const pageMinHeight = Math.max(deviceDimensions.height, 980);
-
+  const contentRefs = React.useRef([]);
+  contentRefs.current = [];
   const pageBg = theme?.page_bg ?? "#ffffff";
   const bodyBg = theme?.body_bg ?? pageBg;
   const textCol = theme?.text ?? "#1f2937";
@@ -919,9 +1823,18 @@ function DocView({
     return () => io.disconnect();
   }, [pages, onPageInView]);
 
+  React.useEffect(() => {
+    if (!editable) return;
+    contentRefs.current.forEach((el, idx) => {
+      if (!el) return;
+      if (el.dataset.initialized === "1") return;
+      el.innerHTML = pages[idx] || "";
+      el.dataset.initialized = "1";
+    });
+  }, [editable, pages]);
+
   return (
     <div data-docview style={{ padding: "12px 0 24px", background: "transparent" }}>
-
       {imageUrl ? (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
           <div
@@ -932,13 +1845,21 @@ function DocView({
               borderRadius: 12,
               overflow: "hidden",
               background: "#fff",
-              boxShadow: "0 4px 10px rgba(0,0,0,.06), 0 20px 40px rgba(0,0,0,.04)",
+              boxShadow:
+                "0 4px 10px rgba(0,0,0,.06), 0 20px 40px rgba(0,0,0,.04)",
             }}
           >
             <img
               src={imageUrl}
               alt="Top A4 Image"
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                display: "block",
+                cursor: "zoom-in",
+              }}
+              onClick={() => onImageClick(imageUrl)}
             />
           </div>
         </div>
@@ -967,7 +1888,8 @@ function DocView({
               color: textCol,
               borderRadius: 12,
               border: "1px solid #e5e7eb",
-              boxShadow: "0 4px 10px rgba(0,0,0,.06), 0 20px 40px rgba(0,0,0,.04)",
+              boxShadow:
+                "0 4px 10px rgba(0,0,0,.06), 0 20px 40px rgba(0,0,0,.04)",
               overflow: "hidden",
               display: "flex",
               flexDirection: "column",
@@ -1012,8 +1934,8 @@ function DocView({
               )}
             </div>
 
-            {/* Editable body */}
             <div
+              ref={(el) => (contentRefs.current[i] = el)}
               data-editable={editable ? "true" : "false"}
               contentEditable={editable}
               suppressContentEditableWarning
@@ -1031,8 +1953,17 @@ function DocView({
               onMouseDown={(e) => {
                 if (editable) e.currentTarget.focus();
               }}
+              {...(editable ? { dangerouslySetInnerHTML: { __html: page || "" } } : {})}
+              onClick={(e) => {
+                if (editable) return; // don't open magnifier in edit mode
+                const t = e.target;
+                if (t && t.tagName === "IMG") {
+                  const src = t.getAttribute("src");
+                  if (src) onImageClick(src);
+                }
+              }}
             >
-              <TextFormat data={page} />
+              {!editable ? <TextFormat data={page} /> : null}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", backgroundColor: pageBg }}>
@@ -1079,30 +2010,33 @@ function DocView({
       </div>
 
       <style>{`
-        @media (max-width: 1020px) {
-        }
-        @media (max-width: 768px) {
-          div[data-docview] { padding: 8px 0 16px; }
-        }
-        @media print {
-          body { background: #fff !important; }
-          * { box-shadow: none !important; }
-          .doc-sheet {
-            page-break-after: always;
-            border: none !important;
-            border-radius: 0 !important;
-            width: auto !important;
-            min-height: auto !important;
-            box-shadow: none !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-          }
-        }
-      `}</style>
+[data-editable="true"] img, .doc-sheet img { cursor: zoom-in; }
+
+@media (max-width: 768px) {
+  div[data-docview] { padding: 8px 0 16px; }
+}
+@media print {
+  body { background: #fff !important; }
+  * { box-shadow: none !important; }
+  .doc-sheet {
+    page-break-after: always;
+    border: none !important;
+    border-radius: 0 !important;
+    width: auto !important;
+    min-height: auto !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+}
+`}</style>
     </div>
   );
 }
 
+/* ===========================
+   Page Component
+=========================== */
 export default function BookDetailsPage() {
   const { id } = useParams();
   const bookId = Number(id);
@@ -1110,18 +2044,17 @@ export default function BookDetailsPage() {
   const [book, setBook] = React.useState(null);
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(true);
-
+  const [zoomSrc, setZoomSrc] = React.useState("");
   const themeKeys = React.useMemo(() => Object.keys(pageThemes || {}), []);
-  const [selectedThemeKey, setSelectedThemeKey] = React.useState(themeKeys[0] || "theme1");
+  const [selectedThemeKey, setSelectedThemeKey] = React.useState(
+    themeKeys[0] || "theme1"
+  );
   const currentTheme = pageThemes?.[selectedThemeKey] || null;
-
 
   const [showThemePanel, setShowThemePanel] = React.useState(false);
   const [showEditorPanel, setShowEditorPanel] = React.useState(false);
 
   const tocRef = React.useRef(null);
-
-
 
   const [topImageUrl, setTopImageUrl] = React.useState("");
 
@@ -1152,12 +2085,23 @@ export default function BookDetailsPage() {
 
   const effectiveTheme = React.useMemo(() => {
     if (!currentTheme) return null;
-    const defaults = { page_bg: "#f8fafc", text: "#0f172a", accent: undefined, accent2: undefined };
+    const defaults = {
+      page_bg: "#f8fafc",
+      text: "#0f172a",
+      accent: undefined,
+      accent2: undefined,
+    };
 
-    const pageBG = apply.page_bg ? (custom.page_bg || currentTheme.page_bg) : defaults.page_bg;
-    const text = apply.text ? (custom.text || currentTheme.text) : defaults.text;
-    const accent = apply.accent ? (custom.accent || currentTheme.accent) : defaults.accent;
-    const accent2 = apply.accent2 ? (custom.accent2 || currentTheme.accent2) : defaults.accent2;
+    const pageBG = apply.page_bg
+      ? custom.page_bg || currentTheme.page_bg
+      : defaults.page_bg;
+    const text = apply.text ? custom.text || currentTheme.text : defaults.text;
+    const accent = apply.accent
+      ? custom.accent || currentTheme.accent
+      : defaults.accent;
+    const accent2 = apply.accent2
+      ? custom.accent2 || currentTheme.accent2
+      : defaults.accent2;
 
     const baseMap = {};
     if (currentTheme.page_bg) baseMap[currentTheme.page_bg] = pageBG;
@@ -1216,7 +2160,10 @@ export default function BookDetailsPage() {
     });
   }, []);
 
-  const pages = React.useMemo(() => bookToPagesWithTheme(book, effectiveTheme), [book, effectiveTheme]);
+  const pages = React.useMemo(
+    () => bookToPagesWithTheme(book, effectiveTheme),
+    [book, effectiveTheme]
+  );
 
   const pageIndex = React.useMemo(() => {
     return (pages || []).map((p, i) => {
@@ -1242,7 +2189,6 @@ export default function BookDetailsPage() {
       })),
     }));
   }, [pageIndex]);
-
 
   const [currentPage, setCurrentPage] = React.useState(1);
 
@@ -1386,105 +2332,146 @@ export default function BookDetailsPage() {
               onPickImage={handlePickImage}
             />
           ) : (
-            <aside
-              ref={tocRef}
-              style={{
-                position: "sticky",
-                top: 16,
-                alignSelf: "start",
-                height: "calc(100vh - 32px)",
-                overflow: "auto",
-                border: "1px solid #e2e8f0",
-                borderRadius: 12,
-                background: "#fff",
-                padding: 12,
-              }}
-            >
-              <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 8 }}>
-                In this book
-              </div>
+            <>
+              <aside
+                ref={tocRef}
+                style={{
+                  position: "sticky",
+                  top: 16,
+                  alignSelf: "start",
+                  height: "calc(100vh - 32px)",
+                  overflow: "auto",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  background: "#fff",
+                  padding: 12,
+                }}
+              >
+                <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 8 }}>
+                  In this book
+                </div>
 
-              <div style={{ display: "grid", gap: 8 }}>
-                {(() => {
-                  const pageIndexLocal = (pages || []).map((p, i) => ({ page: i + 1, ...readMeta(p) }));
-                  const map = new Map();
-                  pageIndexLocal.forEach(({ page, unit, title }) => {
-                    const uKey = unit || "Untitled Unit";
-                    if (!map.has(uKey)) map.set(uKey, new Map());
-                    const L = map.get(uKey);
-                    const lKey = title || "Page";
-                    if (!L.has(lKey)) L.set(lKey, page);
-                  });
+                <div style={{ display: "grid", gap: 8 }}>
+                  {(() => {
+                    const pageIndexLocal = (pages || []).map((p, i) => ({
+                      page: i + 1,
+                      ...readMeta(p),
+                    }));
+                    const map = new Map();
+                    pageIndexLocal.forEach(({ page, unit, title }) => {
+                      const uKey = unit || "Untitled Unit";
+                      if (!map.has(uKey)) map.set(uKey, new Map());
+                      const L = map.get(uKey);
+                      const lKey = title || "Page";
+                      if (!L.has(lKey)) L.set(lKey, page);
+                    });
 
-                  const grouped = Array.from(map.entries()).map(([unitTitle, lessonsMap]) => ({
-                    unit: unitTitle,
-                    lessons: Array.from(lessonsMap.entries()).map(([title, firstPage]) => ({
-                      title,
-                      firstPage,
-                    })),
-                  }));
+                    const grouped = Array.from(map.entries()).map(
+                      ([unitTitle, lessonsMap]) => ({
+                        unit: unitTitle,
+                        lessons: Array.from(lessonsMap.entries()).map(
+                          ([title, firstPage]) => ({
+                            title,
+                            firstPage,
+                          })
+                        ),
+                      })
+                    );
 
-                  const activeFirst = activePointer?.firstPage;
+                    const activeFirst = activePointer?.firstPage;
 
-                  return grouped.map((u) => {
-                    const lessonsSorted = u.lessons.slice().sort((a, b) => a.firstPage - b.firstPage);
+                    return grouped.map((u) => {
+                      const lessonsSorted = u.lessons
+                        .slice()
+                        .sort((a, b) => a.firstPage - b.firstPage);
 
-                    return (
-                      <div key={u.unit}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: "#111827", marginBottom: 6 }}>
-                          {u.unit || "Unit"}
-                        </div>
-                        <div style={{ display: "grid", gap: 4 }}>
-                          {lessonsSorted.map((l) => {
-                            const isActive = l.firstPage === activeFirst;
+                      return (
+                        <div key={u.unit}>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              fontSize: 13,
+                              color: "#111827",
+                              marginBottom: 6,
+                            }}
+                          >
+                            {u.unit || "Unit"}
+                          </div>
+                          <div style={{ display: "grid", gap: 4 }}>
+                            {lessonsSorted.map((l) => {
+                              const isActive = l.firstPage === activeFirst;
 
-                            return (
-                              <button
-                                id={`toc-${l.firstPage}`}
-                                key={u.unit + "::" + l.title}
-                                onClick={() => {
-                                  const el = document.getElementById(`page-${l.firstPage}`);
-                                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                                }}
-                                title={`Go to page ${l.firstPage}`}
-                                style={{
-                                  textAlign: "left",
-                                  cursor: "pointer",
-                                  fontSize: 12,
-
-                                  border: `1px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#e5e7eb"}`,
-                                  borderLeft: `6px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : " #3333ff"}`,
-                                  borderRadius: 10,
-                                  padding: "10px 12px",
-
-                                  background: isActive ? "rgba(37,99,235,0.07)" : "#fff",
-                                  color: isActive ? "#0f172a" : "#334155",
-                                  boxShadow: isActive ? "0 2px 8px rgba(37,99,235,.15)" : "none",
-                                }}
-
-                              >
-                                <div
+                              return (
+                                <button
+                                  id={`toc-${l.firstPage}`}
+                                  key={u.unit + "::" + l.title}
+                                  onClick={() => {
+                                    const el = document.getElementById(
+                                      `page-${l.firstPage}`
+                                    );
+                                    if (el)
+                                      el.scrollIntoView({
+                                        behavior: "smooth",
+                                        block: "start",
+                                      });
+                                  }}
+                                  title={`Go to page ${l.firstPage}`}
                                   style={{
-                                    fontWeight: 700,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
+                                    textAlign: "left",
+                                    cursor: "pointer",
+                                    fontSize: 12,
+                                    border: `1px solid ${
+                                      isActive
+                                        ? effectiveTheme?.accent || "#2563eb"
+                                        : "#e5e7eb"
+                                    }`,
+                                    borderLeft: `6px solid ${
+                                      isActive
+                                        ? effectiveTheme?.accent || "#2563eb"
+                                        : " #3333ff"
+                                    }`,
+                                    borderRadius: 10,
+                                    padding: "10px 12px",
+                                    background: isActive
+                                      ? "rgba(37,99,235,0.07)"
+                                      : "#fff",
+                                    color: isActive ? "#0f172a" : "#334155",
+                                    boxShadow: isActive
+                                      ? "0 2px 8px rgba(37,99,235,.15)"
+                                      : "none",
                                   }}
                                 >
-                                  {l.title || "Lesson"}
-                                </div>
-                                <div style={{ fontSize: 11, opacity: 0.7 }}>Page {l.firstPage}</div>
-                              </button>
-                            );
-                          })}
+                                  <div
+                                    style={{
+                                      fontWeight: 700,
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {l.title || "Lesson"}
+                                  </div>
+                                  <div style={{ fontSize: 11, opacity: 0.7 }}>
+                                    Page {l.firstPage}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            </aside>
-
+                      );
+                    });
+                  })()}
+                </div>
+              </aside>
+              {zoomSrc ? (
+                <ImageMagnifierOverlay
+                  src={zoomSrc}
+                  onClose={() => setZoomSrc("")}
+                  initialScale={1}
+                />
+              ) : null}
+            </>
           )}
 
           <div
@@ -1504,6 +2491,7 @@ export default function BookDetailsPage() {
               onPageInView={setCurrentPage}
               editable={showEditorPanel}
               imageUrl={topImageUrl}
+              onImageClick={(src) => setZoomSrc(src)}
             />
           </div>
         </div>
