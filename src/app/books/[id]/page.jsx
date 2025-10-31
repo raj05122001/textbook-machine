@@ -638,13 +638,11 @@ function bookToPagesWithTheme(book, theme) {
   const blockBg = hasBgImg ? "transparent" : page_bg;                 // for sections/cards
   const tableBg = hasBgImg ? "transparent" : page_bg;                 // for <table>
   const thBg = hasBgImg ? "transparent" : "rgba(37,99,235,.06)";
-  // const rowBg = hasBgImg ? "transparent" : (ui % 2 === 0 ? "rgba(0,0,0,.02)" : page_bg);
 
 
   const muted = hasBgImg ? (text || "#e2e8f0") : "#64748b";
   const tableBd = hasBgImg ? "rgba(255,255,255,.25)" : "#e5e7eb";
 
-  // chip styles (lessons)
   const chipBg = hasBgImg ? "transparent" : "#fff";
   const chipBd = tableBd;
   const chipShadow = hasBgImg ? "none" : "0 2px 8px rgba(0,0,0,.03)";
@@ -971,13 +969,12 @@ function ThemePanel({
   setSvgColorMap,
   onClose,
   onPickImage,
-  onPickImageUrl,     // keeps top image
-  onApplyBackgroundUrl,     // NEW: set a data URL image directly
+  onPickImageUrl,
+  onApplyBackgroundUrl,
   wmDefault = "TBM+",
   bgScope = "all",
   setBgScope = () => { },
 }) {
-  // Smart BG state
 
   const [styleKind, setStyleKind] = React.useState("auto");
   const [bgCandidates, setBgCandidates] = React.useState([]);
@@ -1126,7 +1123,6 @@ function ThemePanel({
         </div>
 
         <div style={{ display: "grid", gap: 8, fontSize: 12, color: "#334155" }}>
-          {/* Hidden file input */}
           <input
             id="bg-file"
             type="file"
@@ -1136,7 +1132,7 @@ function ThemePanel({
               if (!file) return;
               const reader = new FileReader();
               reader.onload = () => {
-                const dataUrl = reader.result; // data:image/...;base64,…
+                const dataUrl = reader.result;
                 if (wmEnabled) {
                   const wmDataUrl = createWatermarkedBackgroundSVG({
                     imageUrl: dataUrl,
@@ -1146,13 +1142,13 @@ function ThemePanel({
                     size: wmSize,
                     angle: wmAngle,
                   });
-                  onApplyBackgroundUrl?.(wmDataUrl);    // ⟵ watermark embedded
+                  onApplyBackgroundUrl?.(wmDataUrl);
                 } else {
-                  onApplyBackgroundUrl?.(dataUrl);      // ⟵ plain image
+                  onApplyBackgroundUrl?.(dataUrl);
                 }
               };
               reader.readAsDataURL(file);
-              e.target.value = ""; // allow re-selecting same file
+              e.target.value = "";
             }}
             style={{
               position: "absolute",
@@ -1215,7 +1211,6 @@ function ThemePanel({
       </div>
 
 
-      {/* Manual cover uploader */}
       <label
         style={{
           display: "grid",
@@ -1270,7 +1265,6 @@ function ThemePanel({
         </button>
       </label>
 
-      {/* Pick a theme */}
       <label
         style={{
           display: "grid",
@@ -1307,7 +1301,6 @@ function ThemePanel({
         </select>
       </label>
 
-      {/* Color toggles */}
       <div style={{ fontSize: 12, color: "#334155", display: "grid", gap: 12 }}>
         <label
           style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
@@ -1653,22 +1646,18 @@ function EditorPanel({ onClose }) {
   const fonts = ["Arial", "Inter", "Times New Roman", "Georgia", "Roboto"];
   const sizes = [10, 11, 12, 14, 16, 18, 20, 24];
 
-  // file picker
   const fileRef = React.useRef(null);
   const [objectUrls, setObjectUrls] = React.useState([]);
 
-  // track last caret position + last editable element
   const lastRangeRef = React.useRef(null);
   const lastEditableElRef = React.useRef(null);
 
-  // selected image state
   const [selectedImg, setSelectedImg] = React.useState(null);
   const [imgWidth, setImgWidth] = React.useState(400);
 
-  // overlay state (for inline resize/zoom handles)
   const [overlayRect, setOverlayRect] = React.useState(null);
-  const resizingRef = React.useRef(null); // {dir,startX,startY,startW,startH,naturalRatio}
-  const draggingRef = React.useRef(null); // {startX,startY,startLeft,startTop}
+  const resizingRef = React.useRef(null);
+  const draggingRef = React.useRef(null);
 
   function saveCurrentRangeIfEditable() {
     const sel = window.getSelection && window.getSelection();
@@ -1699,14 +1688,12 @@ function EditorPanel({ onClose }) {
     } catch { }
   }
 
-  // maintain object URL cleanup
   React.useEffect(() => {
     return () => {
       objectUrls.forEach((u) => URL.revokeObjectURL(u));
     };
   }, [objectUrls]);
 
-  // click/select listeners (select image -> show overlay)
   React.useEffect(() => {
     function onDocClick(e) {
       const t = e.target;
@@ -1750,7 +1737,6 @@ function EditorPanel({ onClose }) {
     };
   }, []);
 
-  // sync overlay on scroll/resize
   React.useEffect(() => {
     function onWin() {
       if (selectedImg) updateOverlayRect(selectedImg);
@@ -1777,7 +1763,6 @@ function EditorPanel({ onClose }) {
     });
   }
 
-  // execCommand helpers
   function cmd(command, value = null) {
     try {
       document.execCommand(command, false, value);
@@ -1806,7 +1791,6 @@ function EditorPanel({ onClose }) {
     cmd("hiliteColor", e.target.value);
   }
 
-  // insert image at last caret
   function insertImageFromFile(f) {
     const editable =
       lastEditableElRef.current ||
@@ -1820,7 +1804,6 @@ function EditorPanel({ onClose }) {
       `<img src="${url}" class="tbm-img" ` +
       `style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;" />`;
 
-    // Focus editable first, then restore range
     editable.focus();
     const sel = window.getSelection();
     sel.removeAllRanges();
@@ -1855,7 +1838,6 @@ function EditorPanel({ onClose }) {
     e.target.value = "";
   }
 
-  // Resize logic
   function beginResize(dir, e) {
     if (!selectedImg) return;
     e.preventDefault();
@@ -1911,7 +1893,6 @@ function EditorPanel({ onClose }) {
     saveCurrentRangeIfEditable();
   }
 
-  // Drag bar visual move (for inline content we just show visual feedback)
   function beginDrag(e) {
     if (!selectedImg || !overlayRect) return;
     e.preventDefault();
@@ -1946,7 +1927,6 @@ function EditorPanel({ onClose }) {
     updateOverlayRect(selectedImg);
   }
 
-  // Wheel & keyboard zoom (Ctrl/Cmd wheel, +/-, 0)
   React.useEffect(() => {
     if (!selectedImg) return;
     function onWheel(e) {
@@ -2001,7 +1981,6 @@ function EditorPanel({ onClose }) {
     };
   }, [selectedImg, imgWidth]);
 
-  // Overlay UI (portal)
   function Overlay() {
     if (!selectedImg || !overlayRect) return null;
     const { left, top, width, height } = overlayRect;
@@ -2227,6 +2206,7 @@ function DocView({
   selectedPage = null,
   onSelectPage = () => { },
   bgDisabledPages = new Set(),
+  collectEditedHTMLRef,
 }) {
   const pageWidth = Math.min(deviceDimensions.width, 860);
   const pageMinHeight = Math.max(deviceDimensions.height, 980);
@@ -2248,6 +2228,44 @@ function DocView({
   const pageRefs = React.useRef([]);
   pageRefs.current = [];
 
+
+
+  const hydratedOnceRef = React.useRef(new Set());
+  const dirtyRef = React.useRef(new Set());
+  const dirtyHandlersRef = React.useRef(new WeakMap());
+
+  function bindDirtyGuards(el, idx) {
+    if (!el) return;
+    if (dirtyHandlersRef.current.has(el)) return;
+    const handler = () => dirtyRef.current.add(idx);
+    ["input", "blur", "paste", "keydown"].forEach(evt => el.addEventListener(evt, handler));
+    dirtyHandlersRef.current.set(el, handler);
+  }
+
+  function unbindDirtyGuards(el) {
+    if (!el) return;
+    const handler = dirtyHandlersRef.current.get(el);
+    if (!handler) return;
+    ["input", "blur", "paste", "keydown"].forEach(evt => el.removeEventListener(evt, handler));
+    dirtyHandlersRef.current.delete(el);
+  }
+
+  function resetPageFromSource(idx) {
+    const el = contentRefs.current[idx];
+    if (!el) return;
+    dirtyRef.current.delete(idx);
+    hydratedOnceRef.current.delete(idx);
+    const nextHtml = markdownToHtml(pages[idx] || "");
+    if (el.innerHTML !== nextHtml) el.innerHTML = nextHtml;
+    hydratedOnceRef.current.add(idx);
+  }
+
+
+
+
+
+
+
   React.useEffect(() => {
     if (!pages?.length) return;
     const opts = { root: null, rootMargin: "0px 0px -50% 0px", threshold: 0.1 };
@@ -2263,16 +2281,67 @@ function DocView({
     pageRefs.current.forEach((el) => el && io.observe(el));
     return () => io.disconnect();
   }, [pages, onPageInView]);
-
   React.useEffect(() => {
     if (!editable) return;
+
     contentRefs.current.forEach((el, idx) => {
       if (!el) return;
-      if (el.dataset.initialized === "1") return;
-      el.innerHTML = pages[idx] || "";
-      el.dataset.initialized = "1";
+
+      bindDirtyGuards(el, idx);
+
+      if (dirtyRef.current.has(idx)) return;
+
+      const already = hydratedOnceRef.current.has(idx);
+      const nextHtml = markdownToHtml(pages[idx] || "");
+
+      if (!already) {
+        if (el.innerHTML !== nextHtml) el.innerHTML = nextHtml;
+        hydratedOnceRef.current.add(idx);
+        return;
+      }
+
+      if (el.innerHTML !== nextHtml) {
+        el.innerHTML = nextHtml;
+      }
     });
+
+    return () => {
+      contentRefs.current.forEach(el => unbindDirtyGuards(el));
+    };
   }, [editable, pages]);
+
+
+
+  React.useEffect(() => {
+    if (!collectEditedHTMLRef) return;
+    collectEditedHTMLRef.current = () => {
+      try {
+        if (editable && contentRefs.current?.length) {
+          return contentRefs.current.map((el) => (el ? el.innerHTML || "" : ""));
+        }
+        return (pages || []).slice();
+      } catch (e) {
+        console.warn("collectEditedHTML failed:", e);
+        return (pages || []).slice();
+      }
+    };
+
+    // ✅ capture baseline once (first time pages render in this mount)
+    try {
+      if (collectEditedHTMLRef.current && !collectEditedHTMLRef.current.__initial) {
+        if (editable && contentRefs.current?.length) {
+          collectEditedHTMLRef.current.__initial = contentRefs.current.map((el) => (el ? el.innerHTML || "" : ""));
+        } else {
+          collectEditedHTMLRef.current.__initial = (pages || []).slice();
+        }
+      }
+    } catch { }
+
+    return () => {
+      if (collectEditedHTMLRef) collectEditedHTMLRef.current = null;
+    };
+  }, [editable, pages, collectEditedHTMLRef]);
+
 
   return (
     <div data-docview style={{ padding: "12px 0 24px", background: "transparent" }}>
@@ -2335,10 +2404,9 @@ function DocView({
               backgroundColor: (theme?.page_bg_image ? "transparent" : pageBg),
               outline: editable && selectedPage === i + 1 ? "2px solid #2563eb" : "none",
               outlineOffset: 0,
-              // Only first page par BG image, warna sab par:
               ...(theme?.page_bg_image && (bgScope === "all" || i === 0)
                 ? (bgDisabledPages?.has?.(i)
-                  ? { backgroundImage: "none" } // ⟵ per-page remove
+                  ? { backgroundImage: "none" }
                   : {
                     backgroundImage: `url("${theme.page_bg_image}")`,
                     backgroundSize: "cover",
@@ -2406,7 +2474,6 @@ function DocView({
                 </div>
               )}
             </div>
-
             <div
               ref={(el) => (contentRefs.current[i] = el)}
               data-editable={editable ? "true" : "false"}
@@ -2419,19 +2486,16 @@ function DocView({
                 lineHeight: 1.7,
                 color: textCol,
                 backgroundColor: theme?.page_bg_image ? "transparent" : bodyBg,
-                // Agar background image use ho rahi hai to content pe koi backgroundImage mat lagayein:
                 ...(theme?.page_bg_image ? {} : {
                   backgroundImage:
                     "repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(0,0,0,0.02) 31px, rgba(0,0,0,0.02) 32px)"
                 }),
-                backgroundBlendMode: undefined,
               }}
               onMouseDown={(e) => {
                 if (editable) e.currentTarget.focus();
               }}
-              {...(editable ? { dangerouslySetInnerHTML: { __html: markdownToHtml(page) || "" } } : {})}
               onClick={(e) => {
-                if (editable) return; // don't open magnifier in edit mode
+                if (editable) return;
                 const t = e.target;
                 if (t && t.tagName === "IMG") {
                   const src = t.getAttribute("src");
@@ -2441,6 +2505,7 @@ function DocView({
             >
               {!editable ? <TextFormat data={page} /> : null}
             </div>
+
 
             <div style={{ display: "flex", flexDirection: "column", backgroundColor: pageBg }}>
               {footHTML ? (
@@ -2531,11 +2596,12 @@ export default function BookDetailsPage() {
   const [bgScope, setBgScope] = React.useState("all");
   const [showThemePanel, setShowThemePanel] = React.useState(false);
   const [showEditorPanel, setShowEditorPanel] = React.useState(false);
-  // ✅ Plain JS (no generics)
   const [selectedPage, setSelectedPage] = React.useState(null);
   const [bgDisabledPages, setBgDisabledPages] = React.useState(new Set());
-
+  const collectEditedHTMLRef = React.useRef(null);
   const tocRef = React.useRef(null);
+  const [contentIds, setContentIds] = React.useState([]);
+  const [primaryContentId, setPrimaryContentId] = React.useState(null);
 
   const [topImageUrl, setTopImageUrl] = React.useState("");
 
@@ -2614,25 +2680,6 @@ export default function BookDetailsPage() {
   }, []);
 
   React.useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    jfetch(`/api/books/${bookId}/`)
-      .then((res) => {
-        if (!mounted) return;
-        setBook(res?.data ?? null);
-        setError("");
-      })
-      .catch((e) => {
-        if (!mounted) return;
-        setError(e.message || "Failed to load book");
-      })
-      .finally(() => mounted && setLoading(false));
-    return () => {
-      mounted = false;
-    };
-  }, [bookId]);
-
-  React.useEffect(() => {
     return () => {
       if (topImageUrl && topImageUrl.startsWith("blob:")) {
         try { URL.revokeObjectURL(topImageUrl); } catch { }
@@ -2650,15 +2697,13 @@ export default function BookDetailsPage() {
     });
   }, []);
 
-  // NEW: accept data URL directly (generated SVG with watermark)
   const handlePickImageUrl = React.useCallback((url) => {
     setTopImageUrl((prev) => {
       if (prev && prev.startsWith("blob:")) {
         try { URL.revokeObjectURL(prev); } catch { }
       }
-      return url; // data: URL or any URL
+      return url;
     });
-    // Smooth scroll to top so user sees the applied image
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   }, []);
 
@@ -2667,6 +2712,59 @@ export default function BookDetailsPage() {
     [book, effectiveTheme]
   );
 
+
+
+  React.useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+
+    (async () => {
+      try {
+        const res = await jfetch(`/api/books/${bookId}/`);
+        if (!mounted) return;
+
+        const B = res?.data ?? res;
+        setBook(B ?? null);
+        setError("");
+
+        const all = collectAllContentIdsFromBook(B);
+        setContentIds(all); // array of strings
+        console.groupCollapsed("[CID] all content ids (payload)");
+        console.table(all);
+        console.groupEnd();
+      } catch (e) {
+        if (!mounted) return;
+        console.error("Book load failed:", e);
+        setError(e?.message || "Failed to load book");
+        setBook(null);
+        setContentIds([]);
+      } finally {
+        if (mounted) setLoading(false); // 🔥 IMPORTANT: loading off
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [bookId]);
+
+
+  React.useEffect(() => {
+    (async () => {
+      if (!book) return;
+      if (Array.isArray(contentIds) && contentIds.length) return;
+      try {
+        const ids = await resolveAllContentIds({ bookId, book }); // <-- हमारा helper
+        console.log("[CID] resolved fallback →", ids);
+        setContentIds(ids);
+      } catch (e) {
+        console.warn("Could not resolve content ids:", e?.message || e);
+      }
+    })();
+  }, [book, contentIds?.length, bookId]);
+
+
+  React.useEffect(() => {
+    if (contentIds) console.log("[CID] state →", contentIds);
+  }, [contentIds]);
   const pageIndex = React.useMemo(() => {
     return (pages || []).map((p, i) => {
       const meta = readMeta(p);
@@ -2741,6 +2839,477 @@ export default function BookDetailsPage() {
     background: "#f8fafc",
     transition: "all 0.3s ease",
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  /* =========================
+     BOOK CONTENT SAVE HELPERS
+     ========================= */
+
+  /* ---- Content ID helpers ---- */
+  function pickId(v) {
+    if (v == null) return null;
+    if (typeof v === "string" || typeof v === "number") return String(v);
+    if (typeof v === "object")
+      return v?.id ?? v?.content?.id ?? v?.pk ?? v?.uuid ?? null;
+    return null;
+  }
+
+  function collectAllContentIdsFromBook(book) {
+    const out = [];
+    const seen = new Set();
+    const push = (val) => {
+      const id = pickId(val);
+      if (id && !seen.has(id)) { seen.add(id); out.push(id); }
+    };
+
+    if (!book) return out;
+
+    // direct/common
+    push(book?.content);
+    push(book?.content?.id);
+    push(book?.content_id);
+    push(book?.primary_content_id);
+    if (Array.isArray(book?.contents)) book.contents.forEach(push);
+    push(book?.syllabus?.content);
+
+    // syllabus.units -> lessons -> contents
+    if (Array.isArray(book?.syllabus?.units)) {
+      for (const u of book.syllabus.units) {
+        const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
+        for (const l of lessons) {
+          const c = l?.contents;
+          if (Array.isArray(c)) c.forEach(push);
+          else push(c);
+        }
+      }
+    }
+
+    // legacy units -> lessons -> contents
+    if (Array.isArray(book?.units)) {
+      for (const u of book.units) {
+        const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
+        for (const l of lessons) {
+          const c = l?.contents;
+          if (Array.isArray(c)) c.forEach(push);
+          else push(c);
+        }
+      }
+    }
+
+    return out;
+  }
+
+  async function resolveAllContentIds({ bookId, book }) {
+    if (book) return collectAllContentIdsFromBook(book);
+    const r = await jfetch(`/api/books/${encodeURIComponent(bookId)}/`);
+    const B = r?.data ?? r;
+    return collectAllContentIdsFromBook(B);
+  }
+
+  function normalizeText(s = "") {
+    return String(s || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\u00A0/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  /* ---- URL utils (robust base + join) ---- */
+  const RAW_API_BASE =
+    (typeof API_BASE !== "undefined" && API_BASE) ||
+    (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_BASE) ||
+    "";
+
+  function normalizeBase(base) {
+    let b = String(base || "").trim();
+    b = b.replace(/^https\/\//i, "https://").replace(/^http\/\//i, "http://");
+    if (!/^https?:\/\//i.test(b)) {
+      b = "https://" + b.replace(/^\/+/, "");
+    }
+    b = b.replace(/\/+$/, "");
+    return b;
+  }
+  const ABS_API_BASE = normalizeBase(RAW_API_BASE);
+
+  function isAbsoluteUrl(u = "") {
+    return /^https?:\/\//i.test(u);
+  }
+  function joinUrl(base, path) {
+    const b = String(base || "").replace(/\/+$/, "");
+    const p = String(path || "").trim();
+    if (!p) return b;
+    if (isAbsoluteUrl(p)) return p;
+    if (!p.startsWith("/")) return `${b}/${p}`;
+    return `${b}${p}`;
+  }
+
+  /* ---- Build {id -> {text, lesson?}} from loaded book if possible ---- */
+  function extractBookContentTextMap(book) {
+    const map = {};
+    const push = (cid, obj) => {
+      const id = pickId(cid);
+      if (!id) return;
+      const text = obj?.text ?? obj?.content_text ?? obj?.body ?? obj?.markdown ?? "";
+      const lesson = obj?.lesson ?? obj?.lesson_id ?? obj?.lessonId;
+      if (map[id] == null) map[id] = { text: String(text || ""), lesson };
+    };
+
+    // Common places
+    if (book?.content) push(book.content?.id ?? book.content, book.content);
+    if (Array.isArray(book?.contents)) {
+      for (const c of book.contents) push(c?.id ?? c, c);
+    }
+
+    // New syllabus model
+    const units = Array.isArray(book?.syllabus?.units) ? book.syllabus.units : [];
+    for (const u of units) {
+      const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
+      for (const l of lessons) {
+        const cs = Array.isArray(l?.contents) ? l.contents : (l?.contents ? [l.contents] : []);
+        for (const c of cs) push(c?.id ?? c, { ...c, lesson: l?.id ?? l?.lesson_id });
+      }
+    }
+
+    // Legacy units
+    const legacyUnits = Array.isArray(book?.units) ? book.units : [];
+    for (const u of legacyUnits) {
+      const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
+      for (const l of lessons) {
+        const cs = Array.isArray(l?.contents) ? l.contents : (l?.contents ? [l?.contents] : []);
+        for (const c of cs) push(c?.id ?? c, { ...c, lesson: l?.id ?? l?.lesson_id });
+      }
+    }
+
+    return map;
+  }
+
+  /* ---- Fetch {id -> {text, lesson?}} from API (bulk + fallback) ---- */
+  async function fetchExistingContentTextMap(ids = []) {
+    const out = {};
+    if (!ids.length) return out;
+
+    try {
+      const bulkUrl = `${API_BASE}/api/contents/bulk/?ids=${ids.map(encodeURIComponent).join(",")}`;
+      const bulkRes = await jfetch(bulkUrl);
+      const list = bulkRes?.data ?? bulkRes ?? [];
+      if (Array.isArray(list) && list.length) {
+        for (const c of list) {
+          const id = String(c?.id ?? "");
+          if (!id) continue;
+          const text = c?.text ?? c?.content_text ?? c?.body ?? c?.markdown ?? "";
+          const lesson = c?.lesson ?? c?.lesson_id ?? c?.lessonId;
+          out[id] = { text: String(text || ""), lesson };
+        }
+        return out;
+      }
+    } catch (e) {
+      console.warn("[bulk fetchExisting] failed, will try sequential. Msg:", e?.message || e);
+    }
+
+    const BATCH = 10;
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const slice = ids.slice(i, i + BATCH);
+      await Promise.all(slice.map(async (id) => {
+        try {
+          const r = await jfetch(`${API_BASE}/api/contents/${encodeURIComponent(String(id))}/`);
+          const c = r?.data ?? r ?? {};
+          const text = c?.text ?? c?.content_text ?? c?.body ?? c?.markdown ?? "";
+          const lesson = c?.lesson ?? c?.lesson_id ?? c?.lessonId;
+          out[String(id)] = { text: String(text || ""), lesson };
+        } catch (e) {
+          console.warn("[fetch content] id", id, "failed:", e?.message || e);
+        }
+      }));
+    }
+    return out;
+  }
+
+  function htmlToMarkdown(html = "") {
+    if (!html || typeof html !== "string") return "";
+
+    let s = html;
+
+    s = s.replace(/<br\s*\/?>/gi, "\n");
+    s = s.replace(/<\/p>\s*/gi, "\n\n").replace(/<p[^>]*>/gi, "");
+
+    s = s.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_, t) => `# ${t}\n\n`);
+    s = s.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, t) => `## ${t}\n\n`);
+    s = s.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, t) => `### ${t}\n\n`);
+    s = s.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, t) => `#### ${t}\n\n`);
+    s = s.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, (_, t) => `##### ${t}\n\n`);
+    s = s.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, (_, t) => `###### ${t}\n\n`);
+
+    s = s.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, "**$1**");
+    s = s.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, "**$1**");
+    s = s.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, "_$1_");
+    s = s.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, "_$1_");
+    s = s.replace(/<u[^>]*>([\s\S]*?)<\/u>/gi, "$1");
+
+    s = s.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (_, src) => `\n\n![](${src})\n\n`);
+
+    s = s.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href, text) => `[${text}](${href})`);
+
+    s = s.replace(/<\/li>\s*<\/ul>/gi, "</li>\n</ul>");
+    s = s.replace(/<ul[^>]*>\s*/gi, "\n");
+    s = s.replace(/<li[^>]*>\s*/gi, "- ");
+    s = s.replace(/<\/li>/gi, "\n");
+    s = s.replace(/<\/ul>/gi, "\n");
+
+    s = s.replace(/<\/?div[^>]*>/gi, "\n");
+    s = s.replace(/<\/?span[^>]*>/gi, "");
+    s = s.replace(/<\/?section[^>]*>/gi, "\n");
+
+    s = s.replace(/<\/?[^>]+>/g, "");
+
+    s = s.replace(/\n{3,}/g, "\n\n");
+
+    return s.trim();
+  }
+
+  function mapEditedPagesToIds(editedHtmlPages = [], ids = [], WANT_MARKDOWN = true) {
+    const map = {};
+    const n = Math.min(editedHtmlPages.length, ids.length);
+    for (let i = 0; i < n; i++) {
+      const id = String(ids[i]);
+      const html = String(editedHtmlPages[i] ?? "");
+      const text = WANT_MARKDOWN ? htmlToMarkdown(html) : html; // NO HTML in payload
+      map[id] = normalizeText(text);
+    }
+    return map;
+  }
+  /* ============
+     SAVE (PATCH)
+     ============ */
+
+
+
+
+  // ----- Pretty printer for logs -----
+
+  function headersToObject(h) {
+    const out = {};
+    try { for (const [k, v] of h.entries()) out[k] = v; } catch { }
+    return out;
+  }
+
+  // ----- Request with FULL logging (request + response) -----
+  async function requestWithLog(url, { method = "PATCH", bodyObj = null, headers = {}, credentials = "include" } = {}) {
+    const reqHeaders = { "Content-Type": "application/json", ...headers };
+    const body = bodyObj != null ? JSON.stringify(bodyObj) : undefined;
+
+    const startedAt = performance.now();
+    console.log("[HTTP] ▶️ request", { method, url, headers: reqHeaders, body: bodyObj });
+
+    let resp;
+    try {
+      resp = await fetch(url, { method, headers: reqHeaders, body, credentials });
+    } catch (e) {
+      const ms = Math.round(performance.now() - startedAt);
+      console.error("[HTTP] ❌ network error", { method, url, ms, error: e?.message || String(e) });
+      throw e;
+    }
+
+    const ms = Math.round(performance.now() - startedAt);
+    let text = "";
+    try { text = await resp.text(); } catch { }
+
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+
+    const headObj = headersToObject(resp.headers);
+
+    const logPayload = {
+      method,
+      url,
+      status: resp.status,
+      ok: resp.ok,
+      duration_ms: ms,
+      response_headers: headObj,
+      response_body: json ?? text,
+    };
+
+    if (resp.ok) {
+      console.log("[HTTP] ✅ response", logPayload);
+    } else {
+      console.warn("[HTTP] ⚠️ response (non-2xx)", logPayload);
+    }
+
+    return { ok: resp.ok, status: resp.status, headers: headObj, json, text, duration_ms: ms };
+  }
+
+  async function handleSaveEditedPages() {
+    const WANT_MARKDOWN = true;
+
+    let ids = Array.isArray(contentIds) ? contentIds.slice() : [];
+    if (!ids.length) ids = await resolveAllContentIds({ bookId, book });
+    ids = Array.from(new Set(ids.filter(Boolean))).map(String);
+    if (!ids.length) {
+      alert("No content ids available to save.");
+      return;
+    }
+
+    const rawPages = typeof collectEditedHTMLRef?.current === "function"
+      ? collectEditedHTMLRef.current()
+      : (pages || []);
+    if (!Array.isArray(rawPages) || !rawPages.length) {
+      alert("No edited pages found.");
+      return;
+    }
+
+    const editedHTML = Array.isArray(rawPages) ? rawPages : [];
+    const baselineHTML =
+      (collectEditedHTMLRef?.current && collectEditedHTMLRef.current.__initial) ||
+      (pages || []);
+
+    const toNorm = (h) =>
+      normalizeText(WANT_MARKDOWN ? htmlToMarkdown(String(h || "")) : String(h || ""));
+
+    let dirtyIdx = [];
+    if (Array.isArray(editedHTML) && Array.isArray(baselineHTML) && baselineHTML.length) {
+      const N = Math.min(editedHTML.length, baselineHTML.length, ids.length);
+      for (let i = 0; i < N; i++) {
+        if (toNorm(editedHTML[i]) !== toNorm(baselineHTML[i])) dirtyIdx.push(i);
+      }
+    } else {
+      dirtyIdx = editedHTML.map((_, i) => i).slice(0, ids.length);
+    }
+
+    if (!dirtyIdx.length) {
+      console.info("[DIRTY] No real edits — abort.");
+      alert("Nothing changed — no updates needed.");
+      return;
+    }
+
+    let existingMap = extractBookContentTextMap(book);
+    const missing = ids.filter((id) => existingMap[id] == null);
+    if (missing.length) {
+      const fetched = await fetchExistingContentTextMap(missing);
+      existingMap = { ...existingMap, ...fetched };
+    }
+
+    const changes = [];
+    for (const i of dirtyIdx) {
+      const id = ids[i];
+      const beforeApi = normalizeText(existingMap[id]?.text || "");
+      const afterUser = toNorm(editedHTML[i]);
+      if (afterUser !== beforeApi) {
+        changes.push({ id, payload: { text: afterUser } });
+      }
+    }
+
+    if (!changes.length) {
+      console.info("[DIFF] Dirty vs baseline था, पर API text already match — nothing to send.");
+      alert("Nothing changed — already up to date.");
+      return;
+    }
+
+    console.log("[DIFF] Mismatched Content IDs:", changes.map(c => c.id));
+
+    const patchResults = [];   // [{ id, sent, server, status, ok, ms }]
+
+    const errors = [];
+    for (const { id, payload } of changes) {
+      const path = `/api/contents/${encodeURIComponent(String(id))}/`;
+      const url = joinUrl(ABS_API_BASE, path);
+
+      console.groupCollapsed(`[PATCH] id=${id}`);
+      console.log("url:", url);
+      console.log("payload (sent):", payload);
+
+      // Replace the whole try/catch pair with a single always-logged request:
+      try {
+        const url = joinUrl(ABS_API_BASE, path);     // ABS url pakka
+        const resp = await requestWithLog(url, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          bodyObj: payload,    // wrapper hi stringify karega
+        });
+
+        // response ko json prefer karo, warna raw text
+        const server = (resp && (resp.json ?? resp.text)) ?? null;
+
+        console.log("[HTTP] meta:", {
+          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url   // <- local `url` var from above
+        });
+
+        console.log("[PATCH] payload (sent):", payload);
+        console.log("[PATCH] response (full):\n", JSON.stringify(server, null, 2));
+
+        if (!resp.ok) {
+          throw new Error(`[${resp.status}] ${JSON.stringify(server)}`);
+        }
+
+        patchResults.push({
+          id: server?.id ?? id,
+          ok: resp.ok,
+          status: resp.status,
+          ms: resp.duration_ms,
+          sent: payload,
+          server,
+        });
+      } catch (e) {
+        console.error(`[PATCH] id=${id} failed:`, e?.message || e);
+        errors.push({ id, error: e?.message || String(e) });
+      } finally {
+        console.groupEnd();
+      }
+
+    }
+
+    // nice post-summary
+    if (patchResults.length) {
+      console.groupCollapsed("[PATCH] summary table");
+      console.table(
+        patchResults.map(r => ({
+          id: r.id,
+          status: r.status,
+          ok: r.ok,
+          ms: r.ms,
+          text_len: (r.server?.text || "").length,
+          updated_at: r.server?.updated_at,
+          lesson: r.server?.lesson,
+        }))
+      );
+      console.groupEnd();
+    }
+
+
+
+    if (errors.length) {
+      alert(`Saved with some errors ❗\n` + errors.map(e => `id=${e.id}: ${e.error}`).join("\n"));
+    } else {
+      // ✅ refresh baseline so subsequent saves don't re-diff same content
+      if (collectEditedHTMLRef?.current) {
+        try {
+          collectEditedHTMLRef.current.__initial = editedHTML.slice();
+        } catch { }
+      }
+      alert(`Saved successfully ✅ (${changes.length} item${changes.length > 1 ? "s" : ""} updated)`);
+    }
+  }
+
+
+
 
   return (
     <div style={containerStyle}>
@@ -2832,6 +3401,22 @@ export default function BookDetailsPage() {
                   title="Remove background image on this page only"
                 >
                   Remove BG (this page)
+                </button>
+                <button
+                  onClick={handleSaveEditedPages}
+                  style={{
+                    height: 32,
+                    padding: "0 12px",
+                    border: "1px solid #10b981",
+                    borderRadius: 8,
+                    background: "#10b981",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                  title="Save edited pages"
+                >
+                  Save
                 </button>
 
                 <button
@@ -3077,6 +3662,7 @@ export default function BookDetailsPage() {
               selectedPage={selectedPage}
               onSelectPage={setSelectedPage}
               bgDisabledPages={bgDisabledPages}
+              collectEditedHTMLRef={collectEditedHTMLRef}
             />
           </div>
         </div>
