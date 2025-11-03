@@ -7,10 +7,15 @@ import { useParams } from "next/navigation";
 
 import pageThemes from "./pageThemes.json";
 import TextFormat, { markdownToHtml } from "@/components/format/TextFormat";
-
+import toast from "react-hot-toast";
 const API_BASE = "https://tbmplus-backend.ultimeet.io";
 
-
+function readCookie(name) {
+  if (typeof document === "undefined") return null;
+  const pattern = new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1") + '=([^;]*)');
+  const match = document.cookie.match(pattern);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 function ImageMagnifierOverlay({
   src,
   onClose,
@@ -423,7 +428,6 @@ function buildA4Background({
       <path d="M0,${Math.round(H * 0.86)} Q ${Math.round(W * 0.28)},${Math.round(H * 0.98)} ${Math.round(W * 0.60)},${Math.round(H * 0.90)} T ${W},${Math.round(H * 0.95)} L${W},${H} L0,${H} Z" fill="${lighten(a2, 0.05)}" opacity="0.9"/>
     `;
   } else {
-    // waves (default)
     overlay = `
       <path d="M0,0 L${W},0 L${W},${Math.round(H * 0.18)} Q ${Math.round(W * 0.66)},${Math.round(H * 0.28)} ${Math.round(W * 0.35)},${Math.round(H * 0.16)} T 0,${Math.round(H * 0.22)} Z"
             fill="${a1}" opacity="0.95"/>
@@ -635,8 +639,8 @@ function bookToPagesWithTheme(book, theme) {
   const accent = theme?.accent || "#2563eb";
   const accent2 = theme?.accent2 || "#60a5fa";
   const hasBgImg = !!theme?.page_bg_image;
-  const blockBg = hasBgImg ? "transparent" : page_bg;                 // for sections/cards
-  const tableBg = hasBgImg ? "transparent" : page_bg;                 // for <table>
+  const blockBg = hasBgImg ? "transparent" : page_bg;               
+  const tableBg = hasBgImg ? "transparent" : page_bg;             
   const thBg = hasBgImg ? "transparent" : "rgba(37,99,235,.06)";
 
 
@@ -951,7 +955,6 @@ function bookToPagesWithTheme(book, theme) {
     html.replace(/\{\{\s*total\s*\}\}/g, String(total))
   );
 }
-
 /* ===========================
    Theme Panel (+ Smart Background generator)
 =========================== */
@@ -973,6 +976,10 @@ function ThemePanel({
   onApplyBackgroundUrl,
   wmDefault = "TBM+",
   bgScope = "all",
+  bookId,
+  coverFile = null,
+  savingCover = false,
+  onSaveCover = () => { },
   setBgScope = () => { },
 }) {
 
@@ -989,6 +996,8 @@ function ThemePanel({
   const [wmGap, setWmGap] = React.useState(220);
   const [wmSize, setWmSize] = React.useState(56);
   const [wmAngle, setWmAngle] = React.useState(-30);
+  const [saving, setSaving] = React.useState(false);
+
 
   const regenerate = React.useCallback(() => {
     const base = generateBackgroundCandidates({
@@ -1014,6 +1023,111 @@ function ThemePanel({
     padding: "6px 10px",
     cursor: "pointer",
   };
+
+
+
+
+
+
+  function replaceColors(html, map) {
+    if (!html || !map) return html;
+    let out = html;
+    const entries = Object.entries(map).sort((a, b) => b[0].length - a[0].length);
+    for (const [orig, current] of entries) {
+      if (!current || current.toLowerCase() === String(orig).toLowerCase()) continue;
+      const safe = String(orig).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(safe, "gi");
+      out = out.replace(re, current);
+    }
+    return out;
+  }
+
+  function buildThemeJSON() {
+    const base = pageThemes?.[selectedThemeKey] || {};
+    const pick = (key, def) => {
+      if (apply?.[key]) {
+        return (custom?.[key] || base?.[key] || def);
+      }
+      return (base?.[key] ?? def);
+    };
+
+    const finalAccent = pick("accent", "#2563eb");
+    const finalAccent2 = pick("accent2", "#60a5fa");
+    const finalText = pick("text", "#0f172a");
+    const finalBG = pick("page_bg", "#ffffff");
+
+    const rawHeader = base?.header || "";
+    const rawFooter = base?.footer || "";
+
+
+    let header = rawHeader
+      .replaceAll("{{ACCENT}}", finalAccent)
+      .replaceAll("{{ACCENT2}}", finalAccent2);
+    let footer = rawFooter
+      .replaceAll("{{ACCENT}}", finalAccent)
+      .replaceAll("{{ACCENT2}}", finalAccent2);
+
+    header = replaceColors(header, svgColorMap);
+    footer = replaceColors(footer, svgColorMap);
+
+    return {
+      id: base?.id || selectedThemeKey || "untitled-theme",
+      page_bg: finalBG,
+      text: finalText,
+      accent: finalAccent,
+      accent2: finalAccent2,
+      header,
+      footer,
+    };
+  }
+
+  async function handleSaveTheme() {
+    try {
+      setSaving(true);
+      const theme_json = buildThemeJSON();
+
+      const res = await jfetch(`/api/books/${bookId}/`, {
+        method: "PATCH",
+        body: { theme_json },
+      });
+
+      console.groupCollapsed(`[SAVE THEME] PATCH /api/books/${bookId}/ → response`);
+      console.log("raw response:", res);
+      const payload = res?.data ?? res;
+      console.log("unwrapped payload:", payload);
+      if (payload?.theme_json) {
+        console.log("saved theme_json:");
+        console.dir(payload.theme_json, { depth: null });
+      }
+      if (payload?.id || payload?.pk) {
+        console.log("book id:", payload.id ?? payload.pk);
+      }
+      console.groupEnd();
+
+      const ok =
+        (typeof res?.ok === "boolean" ? res.ok : true) &&
+        !(typeof res?.status === "number" && res.status >= 400) &&
+        !payload?.error;
+
+      if (!ok) {
+        const msg =
+          payload?.detail ||
+          payload?.message ||
+          res?.statusText ||
+          "Save failed";
+        throw new Error(msg);
+      }
+
+      toast.success("Theme saved to book ✅");
+    } catch (err) {
+      const msg = err?.message || "Save failed";
+      console.error("[SAVE THEME] error:", err);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
 
   return (
     <aside
@@ -1044,6 +1158,38 @@ function ThemePanel({
           Close
         </button>
       </div>
+
+
+      <div style={{
+        display: "grid",
+        gap: 8,
+        marginBottom: 12,
+      }}>
+        <button
+          type="button"
+          onClick={handleSaveTheme}
+          disabled={saving}
+          style={{
+            height: 38,
+            borderRadius: 8,
+            border: "1px solid #e2e8f0",
+            padding: "8px 12px",
+            background: saving ? "#f1f5f9" : "#0ea5e9",
+            color: saving ? "#64748b" : "#fff",
+            cursor: saving ? "not-allowed" : "pointer",
+            fontWeight: 700,
+            justifySelf: "start",
+            minWidth: 160,
+            boxShadow: "0 1px 2px rgba(0,0,0,.06)"
+          }}
+          title="Save current theme to book"
+        >
+          {saving ? "Saving..." : "Save Theme"}
+        </button>
+
+      </div>
+
+
 
       <div
         style={{
@@ -1228,7 +1374,7 @@ function ThemePanel({
           accept="image/*"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file && onPickImage) onPickImage(file);
+            if (file && onPickImage) onPickImage(file); 
           }}
           style={{
             position: "absolute",
@@ -1243,6 +1389,7 @@ function ThemePanel({
           }}
           title="Select an image to show on top"
         />
+
 
         <button
           type="button"
@@ -1263,7 +1410,32 @@ function ThemePanel({
         >
           Choose Cover page
         </button>
+
+
+        <button
+          type="button"
+          onClick={onSaveCover}                  
+          disabled={!coverFile || savingCover}
+          style={{
+            height: 36,
+            borderRadius: 8,
+            border: savingCover ? "1px solid #93c5fd" : "1px solid #3b82f6",
+            padding: "6px 12px",
+            background: savingCover ? "#bfdbfe" : "#3b82f6",
+            color: "#fff",
+            cursor: !coverFile || savingCover ? "not-allowed" : "pointer",
+            fontWeight: 700,
+            justifySelf: "start",
+            width: "100%",
+          }}
+          aria-label="Save cover page"
+          title={coverFile ? "Upload this image as cover_page" : "Choose an image first"}
+        >
+          {savingCover ? "Saving…" : "Save Cover"}
+        </button>
+
       </label>
+
 
       <label
         style={{
@@ -2191,8 +2363,6 @@ function EditorPanel({ onClose }) {
     </aside>
   );
 }
-
-
 function DocView({
   pages,
   fontSize = 16,
@@ -2259,13 +2429,6 @@ function DocView({
     if (el.innerHTML !== nextHtml) el.innerHTML = nextHtml;
     hydratedOnceRef.current.add(idx);
   }
-
-
-
-
-
-
-
   React.useEffect(() => {
     if (!pages?.length) return;
     const opts = { root: null, rootMargin: "0px 0px -50% 0px", threshold: 0.1 };
@@ -2326,7 +2489,6 @@ function DocView({
       }
     };
 
-    // ✅ capture baseline once (first time pages render in this mount)
     try {
       if (collectEditedHTMLRef.current && !collectEditedHTMLRef.current.__initial) {
         if (editable && contentRefs.current?.length) {
@@ -2343,6 +2505,7 @@ function DocView({
   }, [editable, pages, collectEditedHTMLRef]);
 
 
+
   return (
     <div data-docview style={{ padding: "12px 0 24px", background: "transparent" }}>
 
@@ -2354,33 +2517,26 @@ function DocView({
       ) : null}
       {imageUrl ? (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-          <div
-            style={{
-              width: pageWidth,
-              aspectRatio: "210 / 297",
-              border: "1px solid #e5e7eb",
-              borderRadius: 12,
-              overflow: "hidden",
-              background: "#fff",
-              boxShadow:
-                "0 4px 10px rgba(0,0,0,.06), 0 20px 40px rgba(0,0,0,.04)",
-            }}
-          >
+          <div style={{
+            width: pageWidth,
+            aspectRatio: "210 / 297",
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            overflow: "hidden",
+            background: "#fff",
+            boxShadow: "0 4px 10px rgba(0,0,0,.06), 0 20px 40px rgba(0,0,0,.04)",
+          }}>
             <img
               src={imageUrl}
-              alt="Top A4 Image"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                display: "block",
-                cursor: "zoom-in",
-              }}
+              alt="Book Cover"
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", cursor: "zoom-in" }}
               onClick={() => onImageClick(imageUrl)}
             />
           </div>
         </div>
       ) : null}
+
+
 
       <div
         style={{
@@ -2575,7 +2731,6 @@ function DocView({
     </div>
   );
 }
-
 /* ===========================
    Page Component
 =========================== */
@@ -2587,10 +2742,12 @@ export default function BookDetailsPage() {
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [zoomSrc, setZoomSrc] = React.useState("");
-  const themeKeys = React.useMemo(() => Object.keys(pageThemes || {}), []);
-  const [selectedThemeKey, setSelectedThemeKey] = React.useState(
-    themeKeys[0] || "theme1"
-  );
+  const themeKeys = React.useMemo(() => Object.keys(pageThemes || {}), [pageThemes]);
+
+  const [coverFile, setCoverFile] = React.useState(null);
+  const [savingCover, setSavingCover] = React.useState(false);
+  const [selectedThemeKey, setSelectedThemeKey] = React.useState("");
+
   const currentTheme = pageThemes?.[selectedThemeKey] || null;
   const [pageBgImage, setPageBgImage] = React.useState("");
   const [bgScope, setBgScope] = React.useState("all");
@@ -2695,6 +2852,7 @@ export default function BookDetailsPage() {
       }
       return url;
     });
+    setCoverFile(file);          
   }, []);
 
   const handlePickImageUrl = React.useCallback((url) => {
@@ -2704,6 +2862,7 @@ export default function BookDetailsPage() {
       }
       return url;
     });
+    setCoverFile(null);            
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   }, []);
 
@@ -2727,8 +2886,12 @@ export default function BookDetailsPage() {
         setBook(B ?? null);
         setError("");
 
+        console.groupCollapsed("[THEME] API payload");
+        console.log("book.theme_json:", B?.theme_json);
+        console.log("book.theme_json.id:", B?.theme_json?.id);
+        console.groupEnd();
         const all = collectAllContentIdsFromBook(B);
-        setContentIds(all); // array of strings
+        setContentIds(all); 
         console.groupCollapsed("[CID] all content ids (payload)");
         console.table(all);
         console.groupEnd();
@@ -2739,7 +2902,7 @@ export default function BookDetailsPage() {
         setBook(null);
         setContentIds([]);
       } finally {
-        if (mounted) setLoading(false); // 🔥 IMPORTANT: loading off
+        if (mounted) setLoading(false); 
       }
     })();
 
@@ -2748,11 +2911,60 @@ export default function BookDetailsPage() {
 
 
   React.useEffect(() => {
+    userPickedRef.current = false;   
+    setSelectedThemeKey("");
+  }, [bookId]);
+
+  React.useEffect(() => {
+    const apiThemeId = book?.theme_json?.id ? String(book.theme_json.id).trim() : "";
+    const available = themeKeys || [];
+    if (!available.length) return; 
+
+    const matchKey = findKeyByThemeId(pageThemes, apiThemeId);
+
+    console.groupCollapsed("[THEME] Sync effect");
+    console.log("apiThemeId:", apiThemeId);
+    console.log("available keys:", available);
+    console.log("matchKey (by .id):", matchKey);
+    console.log("userPickedRef:", userPickedRef.current);
+    console.groupEnd();
+
+    setSelectedThemeKey((prev) => {
+      if (userPickedRef.current) return prev;
+
+      if (matchKey) return matchKey;
+
+      if (apiThemeId && available.includes(apiThemeId)) return apiThemeId;
+
+      if (!prev) return available[0] || "theme1";
+
+      return prev;
+    });
+  }, [book?.theme_json?.id, themeKeys, pageThemes]);
+
+
+
+  const userPickedRef = React.useRef(false);
+
+  function findKeyByThemeId(pageThemesObj, apiId) {
+    if (!apiId) return null;
+    for (const k of Object.keys(pageThemesObj || {})) {
+      const innerId = String(pageThemesObj?.[k]?.id || "").trim();
+      if (innerId && innerId === String(apiId).trim()) return k;
+    }
+    return null;
+  }
+
+
+
+
+
+  React.useEffect(() => {
     (async () => {
       if (!book) return;
       if (Array.isArray(contentIds) && contentIds.length) return;
       try {
-        const ids = await resolveAllContentIds({ bookId, book }); // <-- हमारा helper
+        const ids = await resolveAllContentIds({ bookId, book });
         console.log("[CID] resolved fallback →", ids);
         setContentIds(ids);
       } catch (e) {
@@ -2812,26 +3024,23 @@ export default function BookDetailsPage() {
     if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
   }, [activePointer]);
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f8fafc" }}>
-        <div style={{ color: "#1f2937", fontWeight: 600 }}>Loading book…</div>
-      </div>
-    );
-  }
+  const LoadingScreen = () => (
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f8fafc" }}>
+      <div style={{ color: "#1f2937", fontWeight: 600 }}>Loading book…</div>
+    </div>
+  );
 
-  if (error || !book) {
-    return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0B0D10", color: "#fff" }}>
-        <div>
-          <p style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>{error || "Book not found"}</p>
-          <Link href="/books" style={{ color: "#34d399", textDecoration: "underline" }}>
-            Back to all books
-          </Link>
-        </div>
+  const ErrorScreen = ({ error }) => (
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0B0D10", color: "#fff" }}>
+      <div>
+        <p style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>{error || "Book not found"}</p>
+        <Link href="/books" style={{ color: "#34d399", textDecoration: "underline" }}>
+          Back to all books
+        </Link>
       </div>
-    );
-  }
+    </div>
+  );
+
 
   const containerStyle = {
     minHeight: "100vh",
@@ -2840,31 +3049,9 @@ export default function BookDetailsPage() {
     transition: "all 0.3s ease",
   };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   /* =========================
      BOOK CONTENT SAVE HELPERS
      ========================= */
-
-  /* ---- Content ID helpers ---- */
   function pickId(v) {
     if (v == null) return null;
     if (typeof v === "string" || typeof v === "number") return String(v);
@@ -2883,7 +3070,6 @@ export default function BookDetailsPage() {
 
     if (!book) return out;
 
-    // direct/common
     push(book?.content);
     push(book?.content?.id);
     push(book?.content_id);
@@ -2891,7 +3077,6 @@ export default function BookDetailsPage() {
     if (Array.isArray(book?.contents)) book.contents.forEach(push);
     push(book?.syllabus?.content);
 
-    // syllabus.units -> lessons -> contents
     if (Array.isArray(book?.syllabus?.units)) {
       for (const u of book.syllabus.units) {
         const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
@@ -2903,7 +3088,6 @@ export default function BookDetailsPage() {
       }
     }
 
-    // legacy units -> lessons -> contents
     if (Array.isArray(book?.units)) {
       for (const u of book.units) {
         const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
@@ -2934,7 +3118,6 @@ export default function BookDetailsPage() {
       .trim();
   }
 
-  /* ---- URL utils (robust base + join) ---- */
   const RAW_API_BASE =
     (typeof API_BASE !== "undefined" && API_BASE) ||
     (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_BASE) ||
@@ -2963,7 +3146,6 @@ export default function BookDetailsPage() {
     return `${b}${p}`;
   }
 
-  /* ---- Build {id -> {text, lesson?}} from loaded book if possible ---- */
   function extractBookContentTextMap(book) {
     const map = {};
     const push = (cid, obj) => {
@@ -2974,13 +3156,11 @@ export default function BookDetailsPage() {
       if (map[id] == null) map[id] = { text: String(text || ""), lesson };
     };
 
-    // Common places
     if (book?.content) push(book.content?.id ?? book.content, book.content);
     if (Array.isArray(book?.contents)) {
       for (const c of book.contents) push(c?.id ?? c, c);
     }
 
-    // New syllabus model
     const units = Array.isArray(book?.syllabus?.units) ? book.syllabus.units : [];
     for (const u of units) {
       const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
@@ -2990,7 +3170,6 @@ export default function BookDetailsPage() {
       }
     }
 
-    // Legacy units
     const legacyUnits = Array.isArray(book?.units) ? book.units : [];
     for (const u of legacyUnits) {
       const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
@@ -3003,7 +3182,6 @@ export default function BookDetailsPage() {
     return map;
   }
 
-  /* ---- Fetch {id -> {text, lesson?}} from API (bulk + fallback) ---- */
   async function fetchExistingContentTextMap(ids = []) {
     const out = {};
     if (!ids.length) return out;
@@ -3086,33 +3264,15 @@ export default function BookDetailsPage() {
     return s.trim();
   }
 
-  function mapEditedPagesToIds(editedHtmlPages = [], ids = [], WANT_MARKDOWN = true) {
-    const map = {};
-    const n = Math.min(editedHtmlPages.length, ids.length);
-    for (let i = 0; i < n; i++) {
-      const id = String(ids[i]);
-      const html = String(editedHtmlPages[i] ?? "");
-      const text = WANT_MARKDOWN ? htmlToMarkdown(html) : html; // NO HTML in payload
-      map[id] = normalizeText(text);
-    }
-    return map;
-  }
   /* ============
      SAVE (PATCH)
      ============ */
-
-
-
-
-  // ----- Pretty printer for logs -----
-
   function headersToObject(h) {
     const out = {};
     try { for (const [k, v] of h.entries()) out[k] = v; } catch { }
     return out;
   }
 
-  // ----- Request with FULL logging (request + response) -----
   async function requestWithLog(url, { method = "PATCH", bodyObj = null, headers = {}, credentials = "include" } = {}) {
     const reqHeaders = { "Content-Type": "application/json", ...headers };
     const body = bodyObj != null ? JSON.stringify(bodyObj) : undefined;
@@ -3225,7 +3385,7 @@ export default function BookDetailsPage() {
 
     console.log("[DIFF] Mismatched Content IDs:", changes.map(c => c.id));
 
-    const patchResults = [];   // [{ id, sent, server, status, ok, ms }]
+    const patchResults = [];   
 
     const errors = [];
     for (const { id, payload } of changes) {
@@ -3236,20 +3396,18 @@ export default function BookDetailsPage() {
       console.log("url:", url);
       console.log("payload (sent):", payload);
 
-      // Replace the whole try/catch pair with a single always-logged request:
       try {
-        const url = joinUrl(ABS_API_BASE, path);     // ABS url pakka
+        const url = joinUrl(ABS_API_BASE, path);     
         const resp = await requestWithLog(url, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          bodyObj: payload,    // wrapper hi stringify karega
+          bodyObj: payload,    
         });
 
-        // response ko json prefer karo, warna raw text
         const server = (resp && (resp.json ?? resp.text)) ?? null;
 
         console.log("[HTTP] meta:", {
-          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url   // <- local `url` var from above
+          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url   
         });
 
         console.log("[PATCH] payload (sent):", payload);
@@ -3276,7 +3434,6 @@ export default function BookDetailsPage() {
 
     }
 
-    // nice post-summary
     if (patchResults.length) {
       console.groupCollapsed("[PATCH] summary table");
       console.table(
@@ -3298,7 +3455,6 @@ export default function BookDetailsPage() {
     if (errors.length) {
       alert(`Saved with some errors ❗\n` + errors.map(e => `id=${e.id}: ${e.error}`).join("\n"));
     } else {
-      // ✅ refresh baseline so subsequent saves don't re-diff same content
       if (collectEditedHTMLRef?.current) {
         try {
           collectEditedHTMLRef.current.__initial = editedHTML.slice();
@@ -3310,6 +3466,60 @@ export default function BookDetailsPage() {
 
 
 
+  async function handleSaveCover() {
+    if (!coverFile) { alert("Please choose a cover image first."); return; }
+
+    const endpoint = joinUrl(ABS_API_BASE, `/api/books/${encodeURIComponent(bookId)}/`);
+    const fd = new FormData();
+    fd.append("cover_page", coverFile);
+
+    setSavingCover(true);
+    try {
+      console.groupCollapsed("[COVER] ▶️ Upload start");
+      console.log("URL:", endpoint);
+      console.log("File:", coverFile?.name, coverFile?.type, coverFile?.size);
+      console.groupEnd();
+
+      const resp = await fetch(endpoint, {
+        method: "PATCH",
+        body: fd,
+        credentials: "include",
+      });
+
+      const text = await resp.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch { }
+
+      console.groupCollapsed("[COVER] ◀️ Upload response");
+      console.log("status:", resp.status, "ok:", resp.ok);
+      console.log("raw body:", text);
+      console.log("json:", json);
+      console.groupEnd();
+
+      if (!resp.ok) throw new Error(`[${resp.status}] ${text || "Upload failed"}`);
+
+      if (json && typeof json === "object") {
+        setBook((prev) => ({ ...(prev || {}), ...json })); 
+      }
+
+      alert("Cover saved ✅");
+    } catch (e) {
+      console.error("[COVER] ❌ Upload failed:", e?.message || e);
+      alert("Cover save failed: " + (e?.message || "Unknown error"));
+    } finally {
+      setSavingCover(false);
+    }
+  }
+
+  const apiCoverSrc = React.useMemo(() => {
+    const p = book?.cover_page;
+    return p ? joinUrl(ABS_API_BASE, String(p)) : null;
+  }, [book?.cover_page]);
+
+  const finalCoverSrc = topImageUrl || apiCoverSrc;
+
+  if (loading) return <LoadingScreen />;
+  if (error || !book) return <ErrorScreen error={error} />;
 
   return (
     <div style={containerStyle}>
@@ -3349,6 +3559,7 @@ export default function BookDetailsPage() {
               </span>
             </button>
 
+
             <button
               onClick={() => {
                 setShowEditorPanel((s) => !s);
@@ -3375,16 +3586,13 @@ export default function BookDetailsPage() {
             </button>
 
             {showEditorPanel ? (
-              <
-                >
-
-
+              <>
                 <button
                   onClick={() => {
                     if (selectedPage == null) return;
                     setBgDisabledPages((prev) => {
                       const s = new Set(prev);
-                      s.add(selectedPage - 1); // store 0-based
+                      s.add(selectedPage - 1);
                       return s;
                     });
                   }}
@@ -3468,6 +3676,8 @@ export default function BookDetailsPage() {
               themeKeys={themeKeys}
               pageThemes={pageThemes}
               effectiveTheme={effectiveTheme}
+              currentThemeId={book?.theme_json?.id}
+
               onApplyBackgroundUrl={handleApplyBgUrl}
               apply={apply}
               setApply={setApply}
@@ -3477,10 +3687,14 @@ export default function BookDetailsPage() {
               setSvgColorMap={setSvgColorMap}
               onClose={() => setShowThemePanel(false)}
               onPickImage={handlePickImage}
-              onPickImageUrl={handlePickImageUrl}   // NEW
-              wmDefault={(book?.title || "TBM+").toUpperCase()} // NEW default watermark text
+              onPickImageUrl={handlePickImageUrl}
+              coverFile={coverFile}
+              savingCover={savingCover}
+              onSaveCover={handleSaveCover}
+              wmDefault={(book?.title || "TBM+").toUpperCase()}
               bgScope={bgScope}
               setBgScope={setBgScope}
+              bookId={bookId}
             />
           ) : (
             <>
@@ -3656,7 +3870,7 @@ export default function BookDetailsPage() {
               theme={effectiveTheme}
               onPageInView={setCurrentPage}
               editable={showEditorPanel}
-              imageUrl={topImageUrl}
+              imageUrl={finalCoverSrc}
               onImageClick={(src) => setZoomSrc(src)}
               bgScope={bgScope}
               selectedPage={selectedPage}
@@ -3675,12 +3889,12 @@ export default function BookDetailsPage() {
 
 
 function createWatermarkedBackgroundSVG({
-  imageUrl,               // data URL of uploaded image (required)
+  imageUrl,            
   text = "TBM+",
   opacity = 0.12,
-  gap = 220,              // distance between repeats
-  size = 56,              // font size
-  angle = -30,            // rotation in degrees
+  gap = 220,             
+  size = 56,              
+  angle = -30,           
   fontFamily = "Inter,system-ui,Arial",
 }) {
   const W = 2480, H = 3508;

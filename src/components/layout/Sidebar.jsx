@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  BookOpen, 
-  Library, 
-  Plus, 
-  Edit3, 
-  FileText, 
+import {
+  BookOpen,
+  Library,
+  Plus,
+  Edit3,
+  FileText,
   Download,
   TrendingUp,
   Clock,
@@ -19,7 +19,8 @@ import {
   ChevronDown,
   ChevronRight,
   Book,
-  Bookmark
+  Bookmark,
+  NotebookPen
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -80,6 +81,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: '/books?status=draft',
       icon: Archive,
       count: 3
+    },
+    {
+      title: 'Primary Book',
+      href: '/create-primary-book',
+      icon: NotebookPen,
+      count: 3
     }
   ];
 
@@ -115,9 +122,8 @@ const Sidebar = ({ isOpen, onClose }) => {
     <>
 
       {/* Sidebar */}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out ${
-        isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      }`}>
+      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}>
         <div className="flex flex-col h-full">
 
           {/* Sidebar Content */}
@@ -131,15 +137,13 @@ const Sidebar = ({ isOpen, onClose }) => {
                     key={item.href}
                     href={item.href}
                     onClick={() => onClose?.()}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                      isActiveLink(item.href)
+                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${isActiveLink(item.href)
                         ? 'bg-blue-100 text-blue-700 border-l-4 border-blue-700'
                         : 'text-gray-700 hover:bg-gray-100'
-                    } ${
-                      item.highlight 
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700' 
+                      } ${item.highlight
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700'
                         : ''
-                    }`}
+                      }`}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
                     <span>{item.title}</span>
@@ -164,7 +168,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <ChevronRight className="h-4 w-4" />
                 )}
               </button>
-              
+
               {expandedSections.books && (
                 <div className="mt-2 space-y-1 pl-6">
                   {bookMenuItems.map((item) => {
@@ -174,11 +178,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                         key={item.href}
                         href={item.href}
                         onClick={() => onClose?.()}
-                        className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
-                          isActiveLink(item.href)
+                        className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${isActiveLink(item.href)
                             ? 'bg-blue-50 text-blue-700'
                             : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center space-x-3">
                           <Icon className="h-4 w-4" />
@@ -212,7 +215,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <ChevronRight className="h-4 w-4" />
                 )}
               </button>
-              
+
               {expandedSections.library && (
                 <div className="mt-2 space-y-1 pl-6">
                   {libraryItems.map((item) => {
@@ -222,11 +225,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                         key={item.href}
                         href={item.href}
                         onClick={() => onClose?.()}
-                        className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
-                          isActiveLink(item.href)
+                        className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${isActiveLink(item.href)
                             ? 'bg-blue-50 text-blue-700'
                             : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center space-x-3">
                           <Icon className="h-4 w-4" />
@@ -260,7 +262,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <ChevronRight className="h-4 w-4" />
                 )}
               </button>
-              
+
               {expandedSections.recent && (
                 <div className="mt-2 space-y-2 pl-6">
                   {recentBooks.map((book) => (
@@ -294,11 +296,10 @@ const Sidebar = ({ isOpen, onClose }) => {
             <Link
               href="/settings"
               onClick={() => onClose?.()}
-              className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActiveLink('/settings')
+              className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActiveLink('/settings')
                   ? 'bg-blue-100 text-blue-700'
                   : 'text-gray-700 hover:bg-gray-100'
-              }`}
+                }`}
             >
               <Settings className="h-5 w-5" />
               <span>Settings</span>

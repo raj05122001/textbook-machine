@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  BookOpen, 
-  Library, 
-  Plus, 
-  User, 
-  Settings, 
+import {
+  BookOpen,
+  Library,
+  Plus,
+  User,
+  Settings,
   Search,
   Bell,
   Menu,
@@ -55,8 +55,8 @@ const Header = ({ onSidebarToggle }) => {
               </div>
               <span className="text-xl font-bold text-gray-900 relative">
                 TBM <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-  PLUS
-</span>
+                  PLUS
+                </span>
 
               </span>
             </Link>
@@ -72,9 +72,8 @@ const Header = ({ onSidebarToggle }) => {
               <input
                 type="text"
                 placeholder="Search books, chapters..."
-                className={`block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all ${
-                  isSearchFocused ? 'ring-2 ring-blue-500' : ''
-                }`}
+                className={`block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all ${isSearchFocused ? 'ring-2 ring-blue-500' : ''
+                  }`}
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setIsSearchFocused(false)}
               />
@@ -111,8 +110,8 @@ const Header = ({ onSidebarToggle }) => {
               {/* User Dropdown */}
               {isUserMenuOpen && (
                 <>
-                  <div 
-                    className="fixed inset-0 z-10" 
+                  <div
+                    className="fixed inset-0 z-10"
                     onClick={() => setIsUserMenuOpen(false)}
                   />
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-20">
@@ -121,8 +120,8 @@ const Header = ({ onSidebarToggle }) => {
                         <div className="font-medium">John Doe</div>
                         <div className="text-gray-500">john@example.com</div>
                       </div>
-                      
-                      <Link 
+
+                      <Link
                         href="/profile"
                         className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                         onClick={() => setIsUserMenuOpen(false)}
@@ -130,8 +129,8 @@ const Header = ({ onSidebarToggle }) => {
                         <User className="h-4 w-4 mr-3" />
                         Profile
                       </Link>
-                      
-                      <Link 
+
+                      <Link
                         href="/settings"
                         className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                         onClick={() => setIsUserMenuOpen(false)}
@@ -139,9 +138,9 @@ const Header = ({ onSidebarToggle }) => {
                         <Settings className="h-4 w-4 mr-3" />
                         Settings
                       </Link>
-                      
+
                       <div className="border-t border-gray-100">
-                        <button 
+                        <button
                           className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                           onClick={() => setIsUserMenuOpen(false)}
                         >
