@@ -2,6 +2,7 @@
 
 import React from 'react';
 import CreatePrimaryBook from '@/components/createPrimaryBook/createPrimaryBook';
+import PrimaryknowledgeBook from '@/components/createPrimaryBook/primary-knowledge-id';
 
 export default function PrimaryBookPage() {
     return (
@@ -13,6 +14,7 @@ export default function PrimaryBookPage() {
                 </div>
                 <CreatePrimaryBook />
             </div>
+            <PrimaryknowledgeBook />
         </div>
     );
 }
