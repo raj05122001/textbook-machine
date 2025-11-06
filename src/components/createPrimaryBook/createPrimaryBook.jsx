@@ -6,6 +6,7 @@ import { axiosInstance, authAxiosInstance } from '@/axios/AxiosInstans';
 import toast from 'react-hot-toast';
 import { X, Plus, UploadCloud, Loader2 } from 'lucide-react';
 
+/* ---------- helpers ---------- */
 function ordinal(n) {
   const j = n % 10, k = n % 100;
   if (j === 1 && k !== 11) return `${n}st`;
@@ -20,9 +21,93 @@ const STANDARD_OPTIONS = Array.from({ length: 12 }, (_, i) => {
 const BOOK_TYPE_OPTIONS = ['Textbook', 'Guidebook', 'Workbook', 'Reference'];
 const LANGUAGE_OPTIONS = ['English', 'French'];
 
+/**
+ * Open WS, send the knowledge payload, wait for an ack or close.
+ * Retries a couple of times if the socket can't be opened.
+ */
+function sendKnowledgeOverWS(url, knowledge, { timeoutMs = 12000, retries = 1 } = {}) {
+  return new Promise((resolve, reject) => {
+    let ws;
+    let settled = false;
+    let timer;
 
+    const clean = () => {
+      if (timer) clearTimeout(timer);
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        try { ws.close(); } catch {}
+      }
+    };
 
-export default function CreatePrimaryBook() {
+    const tryOnce = (attempt) => {
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        try {
+          ws.send(JSON.stringify(knowledge));
+        } catch (e) {
+          clean();
+          if (!settled) {
+            settled = true;
+            reject(e);
+          }
+          return;
+        }
+
+        // timeout guard
+        timer = setTimeout(() => {
+          clean();
+          if (!settled) {
+            settled = true;
+            reject(new Error('WebSocket timed out waiting for server response'));
+          }
+        }, timeoutMs);
+      };
+
+      ws.onmessage = (evt) => {
+        // If the server sends a specific ack shape, handle it here.
+        // We'll accept anything JSON that contains "ok" or "status":"ok"/"success"
+        try {
+          const data = JSON.parse(evt.data);
+          const ok =
+            data?.ok === true ||
+            data?.status?.toString().toLowerCase?.() === 'ok' ||
+            data?.status?.toString().toLowerCase?.() === 'success' ||
+            data?.message?.toString().toLowerCase?.().includes('queued') ||
+            data?.message?.toString().toLowerCase?.().includes('accepted');
+
+          if (ok && !settled) {
+            settled = true;
+            clean();
+            resolve(data);
+          }
+        } catch {
+          // ignore non-JSON frames
+        }
+      };
+
+      ws.onerror = () => {
+        // Will likely also trigger onclose; let onclose handle retry logic.
+      };
+
+      ws.onclose = () => {
+        if (settled) return;
+        if (attempt < retries) {
+          // retry after short delay
+          setTimeout(() => tryOnce(attempt + 1), 600);
+        } else {
+          settled = true;
+          clean();
+          reject(new Error('WebSocket could not be established or closed unexpectedly'));
+        }
+      };
+    };
+
+    tryOnce(0);
+  });
+}
+
+/* ============================= Component ============================= */
+export default function CreatePrimaryBook({setUpdateState}) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -68,7 +153,6 @@ export default function CreatePrimaryBook() {
           guard += 1;
         }
         if (alive) setSubjects(all);
-        console.log('[subjects] loaded', all.length);
       } catch (e) {
         console.error('[subjects] error', e);
         if (alive) setSubjectsErr('Failed to load subjects.');
@@ -117,66 +201,50 @@ export default function CreatePrimaryBook() {
       operation: 'upload',
       folder: 'book',
     };
-    console.log('[presign] request body', body);
-
     const { data } = await axiosInstance.post('/get_presigned_url/', body);
-    console.log('[presign] response', data);
-
     const wrapped = data?.data || {};
     return {
       s3_key: wrapped.s3_key,
       upload_url: wrapped.presigned_url,
       fields: null,
-      headers: {
-        'Content-Type': fileType || 'application/pdf',
-      },
+      headers: { 'Content-Type': fileType || 'application/pdf' },
     };
   }
-
 
   async function uploadToS3(presign, fileObj) {
     setUploadPct(1);
 
     if (presign.upload_url && !presign.fields) {
-      console.log('[upload] PUT', presign.upload_url);
       const resp = await fetch(presign.upload_url, {
         method: 'PUT',
         headers: { ...(presign.headers || {}) },
         body: fileObj,
       });
-
       if (!resp.ok) {
         const text = await resp.text().catch(() => '(no body)');
         console.error('[upload] PUT failed', resp.status, text);
         throw new Error(`S3 PUT failed: ${resp.status}`);
       }
-
       setUploadPct(100);
-      console.log('[upload] PUT done');
       return;
     }
 
     if (presign.upload_url && presign.fields) {
-      console.log('[upload] POST form-data', presign.upload_url);
       const fd = new FormData();
       Object.entries(presign.fields).forEach(([k, v]) => fd.append(k, v));
       fd.append('file', fileObj);
-
       const resp = await fetch(presign.upload_url, { method: 'POST', body: fd });
       if (!resp.ok) {
         const text = await resp.text().catch(() => '(no body)');
         console.error('[upload] POST failed', resp.status, text);
         throw new Error(`S3 POST failed: ${resp.status}`);
       }
-
       setUploadPct(100);
-      console.log('[upload] POST done');
       return;
     }
 
     throw new Error('Invalid presign response');
   }
-
 
   const handleFilePicked = async (f) => {
     if (!f) return;
@@ -189,7 +257,6 @@ export default function CreatePrimaryBook() {
 
       if (!presign.s3_key) throw new Error('s3_key missing from presign response');
       setS3Key(presign.s3_key);
-      console.log('[upload] s3_key', presign.s3_key);
       toast.success('File uploaded to S3');
 
       if (subjectId && standard && bookType && bookLanguage) {
@@ -205,7 +272,6 @@ export default function CreatePrimaryBook() {
     }
   };
 
-
   const onDrop = (e) => {
     e.preventDefault(); e.stopPropagation();
     setIsDragging(false);
@@ -214,88 +280,81 @@ export default function CreatePrimaryBook() {
   const onDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
   const onDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
 
-const STANDARD_OPTIONS = Array.from({ length: 12 }, (_, i) => {
-  const n = i + 1;
-  const j = n % 10, k = n % 100;
-  const label =
-    j === 1 && k !== 11 ? `${n}st` :
-    j === 2 && k !== 12 ? `${n}nd` :
-    j === 3 && k !== 13 ? `${n}rd` : `${n}th`;
-  return { value: String(n), label };
-});
-
-function normalizeBookTypeForAPI(bt) {
-  if (!bt) return bt;
-  const s = String(bt).trim().toLowerCase();
-  if (s === 'guide' || s === 'guidebook') return 'Guidebook';
-  if (s === 'textbook') return 'Textbook';
-  if (s === 'workbook') return 'Workbook';
-  if (s === 'reference') return 'Reference';
-  return bt; 
-}
-
-function normalizeLanguageForAPI(lang) {
-  if (!lang) return lang;
-  const s = String(lang).trim().toLowerCase();
-  const map = {
-    english: 'ENGLISH',
-    hindi: 'HINDI',
-    marathi: 'MARATHI',
-    gujarati: 'GUJARATI',
-  };
-  return map[s] || String(lang).toUpperCase(); 
-}
-
-function extractErrorMessage(err) {
-  const body = err?.response?.data;
-  if (Array.isArray(body)) {
-    return body
-      .map(e =>
-        Object.entries(e)
-          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
-          .join(' | ')
-      )
-      .join(' ; ');
+  function normalizeBookTypeForAPI(bt) {
+    if (!bt) return bt;
+    const s = String(bt).trim().toLowerCase();
+    if (s === 'guide' || s === 'guidebook') return 'Guidebook';
+    if (s === 'textbook') return 'Textbook';
+    if (s === 'workbook') return 'Workbook';
+    if (s === 'reference') return 'Reference';
+    return bt;
   }
-  return body?.detail || body?.message || err?.message || 'Unknown error';
-}
-
-async function postCreateRecord(key) {
-  const subj = subjects.find(s => s.id === subjectId);
-  const standardLabel =
-    STANDARD_OPTIONS.find(s => s.value === standard)?.label || standard; 
-  const bookTypeExact = normalizeBookTypeForAPI(bookType);
-  const languageExact = normalizeLanguageForAPI(bookLanguage);           
-
-  const row = {
-    s3_path_key: key,
-    subject: subj?.subject_name || '',    
-    standard: standardLabel,           
-    book_type: bookTypeExact,          
-    book_language: languageExact,       
-  };
-
-  const payload = { records: [row] };
-
-  console.log('[create] POST /primary_knowledge/ payload (row)');
-  console.table([row]);
-
-  try {
-    const { data, status } = await authAxiosInstance.post('/primary_knowledge/', payload);
-    console.log('[create] response', status, data);
-    toast.success('Primary knowledge record created');
-    handleClose();
-  } catch (err) {
-    console.error('[create] failed', err?.response?.status, err?.response?.data || err);
-    toast.error(extractErrorMessage(err));
-    throw err;
+  function normalizeLanguageForAPI(lang) {
+    if (!lang) return lang;
+    const s = String(lang).trim().toLowerCase();
+    const map = { english: 'ENGLISH', hindi: 'HINDI', marathi: 'MARATHI', gujarati: 'GUJARATI' };
+    return map[s] || String(lang).toUpperCase();
   }
-}
+  function extractErrorMessage(err) {
+    const body = err?.response?.data;
+    if (Array.isArray(body)) {
+      return body
+        .map(e =>
+          Object.entries(e)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+            .join(' | ')
+        )
+        .join(' ; ');
+    }
+    return body?.detail || body?.message || err?.message || 'Unknown error';
+  }
 
+  async function postCreateRecord(key) {
+    const subj = subjects.find(s => s.id === subjectId);
+    const standardLabel = STANDARD_OPTIONS.find(s => s.value === standard)?.label || standard;
+    const bookTypeExact = normalizeBookTypeForAPI(bookType);
+    const languageExact = normalizeLanguageForAPI(bookLanguage);
 
+    const row = {
+      s3_path_key: key,
+      subject: subj?.subject_name || '',
+      standard: standardLabel,
+      book_type: bookTypeExact,
+      book_language: languageExact,
+    };
+    const payload = { records: [row] };
 
+    try {
+      const { data } = await authAxiosInstance.post('/primary_knowledge/', payload);
+      toast.success('Primary knowledge record created');
 
+      // --- WebSocket step: send knowledge object ---
+      const knowledge = {
+        type: 'vectorize_book',
+        knowledge_ids: data?.knowledge_ids,
+        while_book_generation: false,
+      };
 
+      try {
+        await sendKnowledgeOverWS(
+          'wss://tbmplus-backend.ultimeet.io/ws/vectorize/',
+          knowledge,
+          { timeoutMs: 15000, retries: 1 }
+        );
+        toast.success('Vectorization queued');
+      } catch (wsErr) {
+        console.error('[ws] send failed', wsErr);
+        toast.error('Could not notify vectorizer (WS)');
+      }
+
+      setUpdateState((prev)=>prev+1)
+      handleClose();
+    } catch (err) {
+      console.error('[create] failed', err?.response?.status, err?.response?.data || err);
+      toast.error(extractErrorMessage(err));
+      throw err;
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -310,7 +369,6 @@ async function postCreateRecord(key) {
       setSaving(false);
     }
   };
-
 
   const Button = (
     <button
@@ -343,7 +401,7 @@ async function postCreateRecord(key) {
           <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-xl border-b">
             <div>
               <h3 className="text-lg font-semibold leading-tight">Create Primary Book</h3>
-              <p className="text-xs text-gray-500">Upload file → get S3 key → POST /primary_knowledge/ automatically.</p>
+              <p className="text-xs text-gray-500">Upload file → get S3 key → POST /primary_knowledge/ → WS notify.</p>
             </div>
             <button
               onClick={handleClose}

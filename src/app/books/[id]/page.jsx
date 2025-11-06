@@ -1936,12 +1936,48 @@ function EditorPanel({ onClose }) {
   }
 
   function cmd(command, value = null) {
-    try {
-      document.execCommand(command, false, value);
-      const active = document.querySelector('[data-editable="true"]');
-      if (active) active.focus();
-    } catch { }
-  }
+  try {
+    // 1) Restore last saved selection if available
+    const sel = window.getSelection && window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      if (lastRangeRef.current) {
+        try {
+          sel.addRange(lastRangeRef.current);
+        } catch {}
+      }
+    }
+
+    // 2) Freeze current scroll position
+    const prevY = window.scrollY || document.documentElement.scrollTop || 0;
+
+    // 3) Exec the command
+    document.execCommand(command, false, value);
+
+    // 4) Focus the *same* editable root without scrolling
+    const target =
+      lastEditableElRef.current ||
+      document.activeElement?.closest?.('[data-editable="true"]') ||
+      document.querySelector('[data-editable="true"]'); // fallback only
+
+    if (target && target.focus) {
+      try {
+        target.focus({ preventScroll: true });
+      } catch {
+        target.focus();
+      }
+    }
+
+    // 5) Restore scroll position (belt & suspenders)
+    if ((window.scrollY || document.documentElement.scrollTop || 0) !== prevY) {
+      window.scrollTo({ top: prevY, left: 0, behavior: "instant" in window ? "instant" : "auto" });
+    }
+
+    // 6) Save the latest selection again
+    saveCurrentRangeIfEditable();
+  } catch {}
+}
+
 
   function makeLink() {
     const url = prompt("Enter URL:");
@@ -2429,21 +2465,25 @@ function DocView({
     if (el.innerHTML !== nextHtml) el.innerHTML = nextHtml;
     hydratedOnceRef.current.add(idx);
   }
-  React.useEffect(() => {
+    React.useEffect(() => {
     if (!pages?.length) return;
-    const opts = { root: null, rootMargin: "0px 0px -50% 0px", threshold: 0.1 };
+    // While editing, freeze auto page-detection to avoid scroll jumps.
+    const opts = { root: null, rootMargin: "0px 0px -50% 0px", threshold: [0.33, 0.66, 1] };
     const io = new IntersectionObserver((entries) => {
-      const visible = entries
-        .filter((e) => e.isIntersecting)
-        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-      if (visible?.target?.dataset?.page) {
-        onPageInView(Number(visible.target.dataset.page));
+      if (editable) return; // <-- key guard
+      let best = null;
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        if (!best || e.intersectionRatio > best.intersectionRatio) best = e;
+      }
+      if (best?.target?.dataset?.page) {
+        onPageInView(Number(best.target.dataset.page));
       }
     }, opts);
 
     pageRefs.current.forEach((el) => el && io.observe(el));
     return () => io.disconnect();
-  }, [pages, onPageInView]);
+  }, [pages, onPageInView, editable]);
   React.useEffect(() => {
     if (!editable) return;
 
@@ -2529,7 +2569,7 @@ function DocView({
             <img
               src={imageUrl}
               alt="Book Cover"
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", cursor: "zoom-in" }}
+              style={{ width: "100%", height: "100%", objectFit: "fill", display: "block", cursor: "zoom-in" }}
               onClick={() => onImageClick(imageUrl)}
             />
           </div>
@@ -2637,7 +2677,7 @@ function DocView({
               suppressContentEditableWarning
               style={{
                 flex: 1,
-                padding: "22px 28px",
+                padding: "18px 12px",
                 fontSize,
                 lineHeight: 1.7,
                 color: textCol,
@@ -3018,9 +3058,10 @@ export default function BookDetailsPage() {
     return active;
   }, [groupedTOC, currentPage]);
 
-  React.useEffect(() => {
+    React.useEffect(() => {
     const id = activePointer?.firstPage ? `toc-${activePointer.firstPage}` : "";
     const el = id ? document.getElementById(id) : null;
+    // Ensure we only scroll the TOC's own scroll container, not the whole page.
     if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
   }, [activePointer]);
 
@@ -3523,7 +3564,7 @@ export default function BookDetailsPage() {
 
   return (
     <div style={containerStyle}>
-      <div style={{ maxWidth: 1400, margin: "0 auto", padding: 24 }}>
+      <div className="w-full h-full">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div>
@@ -3662,7 +3703,7 @@ export default function BookDetailsPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "320px 1fr",
+            gridTemplateColumns: "360px 1fr",
             gap: 16,
             alignItems: "start",
           }}

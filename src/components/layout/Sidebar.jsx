@@ -200,7 +200,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             </div>
 
             {/* Library Section */}
-            <div className="mb-6">
+            {/* <div className="mb-6">
               <button
                 onClick={() => toggleSection('library')}
                 className="flex items-center justify-between w-full px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 rounded-lg"
@@ -244,10 +244,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                   })}
                 </div>
               )}
-            </div>
+            </div> */}
 
             {/* Recent Books Section */}
-            <div className="mb-6">
+            {/* <div className="mb-6">
               <button
                 onClick={() => toggleSection('recent')}
                 className="flex items-center justify-between w-full px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 rounded-lg"
@@ -288,7 +288,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   ))}
                 </div>
               )}
-            </div>
+            </div> */}
           </div>
 
           {/* Bottom Settings */}
