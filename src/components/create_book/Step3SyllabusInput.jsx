@@ -13,12 +13,16 @@ export function Step3SyllabusInput({
   uploadedFiles,
   textContent,
   setTextContent,
-  setUploadedFiles
+  setUploadedFiles,
+  formData,
+  contentPrefsSaved,
+  setContentPrefsSaved,
 }) {
   const [sourceOption, setSourceOption] = useState("upload"); // "upload" | "primary" | "mixture"
-const [sourceMix, setSourceMix] = useState({ primary: 80, trusted: 15, internet: 5 });
+  const [sourceMix, setSourceMix] = useState({ primary: 80, trusted: 15, internet: 5 });
+  const [subjectError, setSubjectError] = useState("");
 
-    /* ---------- drag & drop ---------- */
+  /* ---------- drag & drop ---------- */
   const onDrop = useCallback((acceptedFiles) => {
     acceptedFiles.forEach((file) => {
       const reader = new FileReader();
@@ -88,10 +92,16 @@ const [sourceMix, setSourceMix] = useState({ primary: 80, trusted: 15, internet:
           <input
             type="text"
             value={subject}
-            onChange={(e) => setSubject(e.target.value)}
+            onChange={(e) => {
+              setSubject(e.target.value);
+              if (subjectError) setSubjectError("");
+            }}
             placeholder="e.g., Mathematics"
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          {subjectError && (
+            <p className="mt-1 text-sm text-red-600">{subjectError}</p>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -108,11 +118,10 @@ const [sourceMix, setSourceMix] = useState({ primary: 80, trusted: 15, internet:
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <button
           onClick={() => setInputMethod("paste")}
-          className={`p-6 rounded-lg border-2 transition-all ${
-            inputMethod === "paste"
-              ? "border-blue-500 bg-blue-50"
-              : "border-gray-200 hover:border-gray-300"
-          }`}
+          className={`p-6 rounded-lg border-2 transition-all ${inputMethod === "paste"
+            ? "border-blue-500 bg-blue-50"
+            : "border-gray-200 hover:border-gray-300"
+            }`}
         >
           <Edit3 className="h-8 w-8 mx-auto mb-3 text-green-600" />
           <h3 className="font-semibold mb-2">Paste Content</h3>
@@ -123,11 +132,10 @@ const [sourceMix, setSourceMix] = useState({ primary: 80, trusted: 15, internet:
 
         <button
           onClick={() => setInputMethod("upload")}
-          className={`p-6 rounded-lg border-2 transition-all ${
-            inputMethod === "upload"
-              ? "border-blue-500 bg-blue-50"
-              : "border-gray-200 hover:border-gray-300"
-          }`}
+          className={`p-6 rounded-lg border-2 transition-all ${inputMethod === "upload"
+            ? "border-blue-500 bg-blue-50"
+            : "border-gray-200 hover:border-gray-300"
+            }`}
         >
           <Upload className="h-8 w-8 mx-auto mb-3 text-blue-600" />
           <h3 className="font-semibold mb-2">Upload Files</h3>
@@ -141,11 +149,10 @@ const [sourceMix, setSourceMix] = useState({ primary: 80, trusted: 15, internet:
         <div className="space-y-4">
           <div
             {...getRootProps()}
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-              isDragActive
-                ? "border-blue-500 bg-blue-50"
-                : "border-gray-300 hover:border-gray-400"
-            }`}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${isDragActive
+              ? "border-blue-500 bg-blue-50"
+              : "border-gray-300 hover:border-gray-400"
+              }`}
           >
             <input {...getInputProps()} />
             <Upload className="h-12 w-12 mx-auto mb-4 text-gray-400" />
@@ -212,12 +219,16 @@ const [sourceMix, setSourceMix] = useState({ primary: 80, trusted: 15, internet:
         </div>
       )}
       <SourceMixFlow
-      option={sourceOption}
-  onOptionChange={setSourceOption}
-  value={sourceMix}
-  onChange={setSourceMix}
-  bookId={bookId}
-/>
+        option={sourceOption}
+        onOptionChange={setSourceOption}
+        value={sourceMix}
+        onChange={setSourceMix}
+        bookId={bookId}
+        subject={subject}
+        formData={formData}
+        onSubjectError={setSubjectError}
+        onSaved={(ok) => setContentPrefsSaved(!!ok)}
+      />
     </div>
   );
 }

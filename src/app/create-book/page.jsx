@@ -30,8 +30,7 @@ import { Step1BookDetails } from "@/components/create_book/Step1BookDetails";
 import { Step2AISettings } from "@/components/create_book/Step2AISettings";
 import { Step3SyllabusInput } from "@/components/create_book/Step3SyllabusInput";
 import { Step4SyllabusReview } from "@/components/create_book/Step4SyllabusReview";
-import { Step5ContentPreferences } from "@/components/create_book/Step5ContentPreferences";
-import { Step6Content } from "@/components/create_book/Step6Content";
+import { Step5Content } from "@/components/create_book/Step5Content";
 /* ================== API & WS CONFIG ================== */
 const API_BASE = "https://tbmplus-backend.ultimeet.io";
 const WS_BASE = API_BASE.replace(/^https/i, "wss"); // => wss://tbmplus-backend.ultimeet.io
@@ -63,18 +62,18 @@ function normalizeSyllabus(raw) {
     subject_description: s.subject_description ?? "",
     units: Array.isArray(s.units)
       ? s.units.map((u, ui) => ({
-          unit_id: u?.unit_id ?? ui + 1,
-          unit_name: u?.unit_name ?? `Unit ${ui + 1}`,
-          number_of_pages: u?.number_of_pages ?? undefined,
-          lessons: Array.isArray(u?.lessons)
-            ? u.lessons.map((l, li) => ({
-                lesson_id: l?.lesson_id ?? li + 1,
-                lesson_name: l?.lesson_name ?? `Lesson ${li + 1}`,
-                number_of_pages: l?.number_of_pages ?? undefined,
-                lesson_description: l?.lesson_description ?? "",
-              }))
-            : [],
-        }))
+        unit_id: u?.unit_id ?? ui + 1,
+        unit_name: u?.unit_name ?? `Unit ${ui + 1}`,
+        number_of_pages: u?.number_of_pages ?? undefined,
+        lessons: Array.isArray(u?.lessons)
+          ? u.lessons.map((l, li) => ({
+            lesson_id: l?.lesson_id ?? li + 1,
+            lesson_name: l?.lesson_name ?? `Lesson ${li + 1}`,
+            number_of_pages: l?.number_of_pages ?? undefined,
+            lesson_description: l?.lesson_description ?? "",
+          }))
+          : [],
+      }))
       : [],
   };
 }
@@ -123,12 +122,7 @@ export default function CreateBookPage() {
       title: "Syllabus Review",
       description: "Edit or regenerate via feedback",
     },
-    {
-      id: 5,
-      title: "Content Preferences",
-      description: "Choose Content Preferences",
-    },
-    { id: 6, title: "Content", description: "Live generated book content" },
+    { id: 5, title: "Content", description: "Live generated book content" },
   ];
   const [currentStep, setCurrentStep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState(new Set());
@@ -182,7 +176,7 @@ export default function CreateBookPage() {
 
   /* ---------- content state ---------- */
   const [contentJson, setContentJson] = useState(null);
-
+  const [contentPrefsSaved, setContentPrefsSaved] = useState(false);
   /* ---------- UI/control ---------- */
   const [errors, setErrors] = useState([]);
   const [processingStep, setProcessingStep] = useState("");
@@ -221,10 +215,10 @@ export default function CreateBookPage() {
       syllabusExpectingRef.current = false; // <— add this
       try {
         syllabusWsRef.current?.close();
-      } catch {}
+      } catch { }
       try {
         contentWsRef.current?.close();
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -237,7 +231,7 @@ export default function CreateBookPage() {
 
     try {
       syllabusWsRef.current?.close();
-    } catch {}
+    } catch { }
     syllabusWsRef.current = null;
 
     const ws = new WebSocket(`${WS_BASE}/ws/syllabus/${id}/`);
@@ -293,7 +287,7 @@ export default function CreateBookPage() {
     ws.onerror = () => {
       try {
         ws.close();
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -302,7 +296,7 @@ export default function CreateBookPage() {
     if (contentWsRef.current) {
       try {
         contentWsRef.current.close();
-      } catch {}
+      } catch { }
       contentWsRef.current = null;
     }
 
@@ -320,7 +314,7 @@ export default function CreateBookPage() {
       let msg = {};
       try {
         msg = JSON.parse(evt.data || "{}");
-      } catch {}
+      } catch { }
 
       const { status, type, message } = msg;
 
@@ -406,7 +400,7 @@ export default function CreateBookPage() {
     ws.onerror = () => {
       try {
         ws.close();
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -414,10 +408,10 @@ export default function CreateBookPage() {
     return () => {
       try {
         syllabusWsRef.current?.close();
-      } catch {}
+      } catch { }
       try {
         contentWsRef.current?.close();
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -457,7 +451,7 @@ export default function CreateBookPage() {
               setIsSyllabusStreaming(true);
               setProcessingStep("Generating syllabus...");
             }
-          } catch {}
+          } catch { }
         })();
         openSyllabusSocket(Number(qSyl));
         setCurrentStep(4);
@@ -598,7 +592,7 @@ export default function CreateBookPage() {
           const json = pickSyllabusPayload(d);
           if (json) setSyllabusDoc(normalizeSyllabus(d));
           else setIsSyllabusStreaming(true);
-        } catch {}
+        } catch { }
 
         openSyllabusSocket(newId);
         toast.success("Syllabus upload started");
@@ -630,7 +624,7 @@ export default function CreateBookPage() {
         const json = pickSyllabusPayload(d);
         if (json) setSyllabusDoc(normalizeSyllabus(d));
         else setIsSyllabusStreaming(true);
-      } catch {}
+      } catch { }
 
       openSyllabusSocket(newId);
       toast.success("Syllabus creation started");
@@ -729,22 +723,20 @@ export default function CreateBookPage() {
             {steps.map((step, index) => (
               <div key={step.id} className="flex items-center">
                 <div
-                  className={`flex items-center space-x-2 ${
-                    currentStep === step.id
-                      ? "text-blue-600"
-                      : completedSteps.has(step.id)
+                  className={`flex items-center space-x-2 ${currentStep === step.id
+                    ? "text-blue-600"
+                    : completedSteps.has(step.id)
                       ? "text-green-600"
                       : "text-gray-400"
-                  }`}
+                    }`}
                 >
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
-                      currentStep === step.id
-                        ? "border-blue-600 bg-blue-50"
-                        : completedSteps.has(step.id)
+                    className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors ${currentStep === step.id
+                      ? "border-blue-600 bg-blue-50"
+                      : completedSteps.has(step.id)
                         ? "border-green-600 bg-green-50"
                         : "border-gray-300"
-                    }`}
+                      }`}
                   >
                     {completedSteps.has(step.id) ? (
                       <Check className="h-5 w-5" />
@@ -758,7 +750,7 @@ export default function CreateBookPage() {
                   </div>
                 </div>
                 {index < steps.length - 1 && (
-                  <ChevronRight className="h-5 w-5 text-gray-400 mx-4" />
+                  <ChevronRight className="h-5 w-5 text-gray-400 mx-1" />
                 )}
               </div>
             ))}
@@ -808,6 +800,9 @@ export default function CreateBookPage() {
               textContent={textContent}
               setTextContent={setTextContent}
               setUploadedFiles={setUploadedFiles}
+              formData={formData}
+              contentPrefsSaved={contentPrefsSaved}
+              setContentPrefsSaved={setContentPrefsSaved}
             />
           )}
 
@@ -826,15 +821,7 @@ export default function CreateBookPage() {
           )}
 
           {currentStep === 5 && (
-            <Step5ContentPreferences
-              subject={subject}
-              bookId={bookId}
-              formData={formData}
-            />
-          )}
-
-          {currentStep === 6 && (
-            <Step6Content
+            <Step5Content
               isStreaming={isContentStreaming}
               processingStep={processingStep}
               contentPhase={contentPhase}
@@ -863,8 +850,9 @@ export default function CreateBookPage() {
               {currentStep === 3 ? (
                 <button
                   onClick={createSyllabus}
-                  className="flex items-center space-x-2 px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
-                  title="Use the Create Syllabus button above"
+                  disabled={!contentPrefsSaved}
+                  className="flex items-center space-x-2 px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={contentPrefsSaved ? "Create syllabus" : "First save Content Preferences"}
                 >
                   <Sparkles className="h-4 w-4" />
                   <span>Create Syllabus</span>

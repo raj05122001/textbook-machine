@@ -96,7 +96,7 @@ function vectorizeOverWS(knowledgeIds) {
     const ws = new WebSocket(WS_URL);
 
     const cleanup = () => {
-      try { ws.close(); } catch {}
+      try { ws.close(); } catch { }
     };
 
     ws.onopen = () => {
@@ -146,27 +146,38 @@ export default function SourceMixFlow({
   title = "Content Preferences",
   bookId,                 // required for /api/content_preferences/
   subject,                // subject name (string)
-  formData,               // { language, educational_level, category }
+  formData,
+  onSubjectError,
+  onSaved,
 }) {
   const defaultMix = { primary: 80, trusted: 15, internet: 5, urls: ["", ""] };
+  const fileInputRef = React.useRef(null);
+
+  const [dirty, setDirty] = useState(false);
+  const [hasSavedOnce, setHasSavedOnce] = useState(false);
 
   const isMixture = option === "mixture";
-  const isUpload  = option === "upload";
+  const isUpload = option === "upload";
   const isPrimaryOnly = option === "primary";
 
-  // URLs (mixture)
+  // --- declare state BEFORE any effect that references them ---
   const [urls, setUrls] = useState(() =>
-   Array.isArray(value?.urls) && value.urls.length ? value.urls : ["", ""]
- );
-  useEffect(() => {
-    if (Array.isArray(value?.urls)) setUrls(value.urls);
-  }, [value?.urls]);
-
-  // Files (upload)
+    Array.isArray(value?.urls) && value.urls.length ? [...value.urls] : ["", ""]
+  );
   const [files, setFiles] = useState([]);
   const [uploadPct, setUploadPct] = useState(0);
   const [busy, setBusy] = useState(false);
   const onPickFiles = (e) => setFiles(Array.from(e.target.files || []));
+
+  // sync from parent value.urls -> local urls
+  useEffect(() => {
+    if (Array.isArray(value?.urls)) setUrls(value.urls);
+  }, [value?.urls]);
+
+  // mark dirty when any inputs change (now safe: urls/files exist)
+  useEffect(() => {
+    setDirty(true);
+  }, [option, value?.primary, value?.trusted, value?.internet, urls.length, files.length]);
 
   // Mix derived
   const mix = useMemo(() => {
@@ -192,13 +203,13 @@ export default function SourceMixFlow({
     if (which === "primary") {
       const rest = 100 - nextVal;
       const t = mix.trusted, i = mix.internet, sum = t + i || 1;
-      const trusted  = Math.round((t / sum) * rest);
+      const trusted = Math.round((t / sum) * rest);
       const internet = clamp(rest - trusted);
       emitChange({ primary: nextVal, trusted, internet });
     } else if (which === "trusted") {
       const rest = 100 - nextVal;
       const p = mix.primary, i = mix.internet, sum = p + i || 1;
-      const primary  = Math.round((p / sum) * rest);
+      const primary = Math.round((p / sum) * rest);
       const internet = clamp(rest - primary);
       emitChange({ primary, trusted: nextVal, internet });
     } else {
@@ -213,19 +224,26 @@ export default function SourceMixFlow({
   const handleChoose = (opt) => {
     onOptionChange?.(opt);
     if (opt === "mixture" && !value) onChange?.(defaultMix);
+
+    // If user chooses (or re-chooses) upload, pop the file picker
+    if (opt === "upload") {
+      // delay to ensure state updates don’t block the click
+      setTimeout(() => fileInputRef.current?.click(), 0);
+    }
   };
+
 
   // Ensure URL slots when trusted > 0
   useEffect(() => {
-   if (!isMixture) return;
-   setUrls((prev) => {
-     const arr = Array.isArray(prev) ? [...prev] : [];
-     if (arr.length >= 2) return arr;
-     if (arr.length === 0) return ["", ""];
-     if (arr.length === 1) return [arr[0], ""];
-     return arr;
-   });
- }, [isMixture]);
+    if (!isMixture) return;
+    setUrls((prev) => {
+      const arr = Array.isArray(prev) ? [...prev] : [];
+      if (arr.length >= 2) return arr;
+      if (arr.length === 0) return ["", ""];
+      if (arr.length === 1) return [arr[0], ""];
+      return arr;
+    });
+  }, [isMixture]);
 
   const handleUrlsChange = (nextUrls) => {
     setUrls(nextUrls);
@@ -276,25 +294,34 @@ export default function SourceMixFlow({
   };
 
   /* ----------------------------- onClick: Save ----------------------------- */
+  const safeUrls = Array.isArray(urls) ? urls : [];
   const canSave =
-    (isUpload && true) ||
-    (isPrimaryOnly && true) ||
-    (isMixture &&
-      (mix.trusted === 0 ||
-        (mix.trusted > 0 && (urls || []).some((u) => isHttpUrl(String(u).trim())))));
+    dirty && (
+      (isUpload && true) ||
+      (isPrimaryOnly && true) ||
+      (isMixture &&
+        (mix.trusted === 0 ||
+          (mix.trusted > 0 && safeUrls.some((u) => isHttpUrl(String(u || "").trim())))))
+    );
 
   const onClickSave = async () => {
     if (!bookId) {
       toast.error("bookId is required for saving preferences.");
       return;
     }
-
+    if (!String(subject || "").trim()) {
+      onSubjectError?.("Subject is required.");
+      toast.error("Please enter Subject.");
+      return;
+    }
     try {
       setBusy(true);
 
       if (isUpload) {
         if (!files.length) {
-          toast.error("Please choose at least one file to upload.");
+          // Open picker automatically; optional gentle nudge
+          fileInputRef.current?.click();
+          toast("Select files to upload to continue.", { icon: "📄" });
           return;
         }
 
@@ -328,6 +355,9 @@ export default function SourceMixFlow({
         });
 
         toast.success("Uploaded, vectorized and preferences saved.");
+        setDirty(false);
+        setHasSavedOnce(true);
+        onSaved?.(true);
         setFiles([]);
         setUploadPct(0);
         return;
@@ -339,6 +369,9 @@ export default function SourceMixFlow({
           headers: { "Content-Type": "application/json" },
         });
         toast.success("Preferences saved (Primary 100%).");
+        setDirty(false);
+        setHasSavedOnce(true);
+        onSaved?.(true);
         return;
       }
 
@@ -348,6 +381,9 @@ export default function SourceMixFlow({
         headers: { "Content-Type": "application/json" },
       });
       toast.success("Preferences saved (Mixture).");
+      setDirty(false);
+      setHasSavedOnce(true);
+      onSaved?.(true);;
     } catch (err) {
       console.error(err);
       toast.error(typeof err?.message === "string" ? err.message : "Failed to save.");
@@ -394,7 +430,7 @@ export default function SourceMixFlow({
                 Choose files (PDF, DOCX, Images, etc.)
               </div>
             </div>
-            <input type="file" multiple onChange={onPickFiles} className="hidden" />
+            <input type="file" multiple onChange={onPickFiles} className="hidden" ref={fileInputRef} />
             <span className="rounded-md border bg-white px-3 py-1 text-sm">Browse</span>
           </label>
 
@@ -447,20 +483,20 @@ export default function SourceMixFlow({
 
       {/* URLs when trusted > 0 */}
       {isMixture && (
-   <div className="mt-6 rounded-xl border bg-slate-50 p-4">
-     <UrlFields
-       urls={urls}
-       onChange={handleUrlsChange}
-       minCount={2}
-       disabled={busy || mix.trusted === 0}   // 0% par inputs visible but disabled
-     />
-     {mix.trusted === 0 && (
-       <p className="mt-2 text-xs text-gray-500">
-         Increase “Trusted Sources (URLs)” weight to enable these fields.
-       </p>
-     )}
-   </div>
- )}
+        <div className="mt-6 rounded-xl border bg-slate-50 p-4">
+          <UrlFields
+            urls={urls}
+            onChange={handleUrlsChange}
+            minCount={2}
+            disabled={busy || mix.trusted === 0}   // 0% par inputs visible but disabled
+          />
+          {mix.trusted === 0 && (
+            <p className="mt-2 text-xs text-gray-500">
+              Increase “Trusted Sources (URLs)” weight to enable these fields.
+            </p>
+          )}
+        </div>
+      )}
 
       {isMixture && total !== 100 && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-amber-800">
@@ -485,7 +521,7 @@ export default function SourceMixFlow({
           title="Save content preferences"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {busy ? "Working…" : "Save Preferences"}
+          {busy ? "Working…" : hasSavedOnce && !dirty ? "Saved ✓" : "Save Preferences"}
         </button>
       </div>
     </div>
@@ -505,11 +541,12 @@ function OptionTile({ active, subtitle, onClick }) {
     >
       <span
         className={[
-          "grid h-5 w-5 place-items-center rounded border",
-          active ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300 bg-white",
+          "grid h-5 w-5 place-items-center rounded-full border",
+          active ? "border-blue-600 text-blue-600" : "border-gray-300 text-transparent",
         ].join(" ")}
       >
-        {active && <Check className="h-3.5 w-3.5" />}
+        {/* filled dot when active */}
+        <span className="h-2.5 w-2.5 rounded-full bg-current" />
       </span>
       <div>
         <div className="text-sm font-semibold">{subtitle}</div>
