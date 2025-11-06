@@ -1814,7 +1814,7 @@ function ThemePanel({
 /* ===========================
    Editor Panel (with inline Magnification/Resize overlay)
 =========================== */
-function EditorPanel({ onClose }) {
+function EditorPanel({ onClose, onImageInserted }) {
   const fonts = ["Arial", "Inter", "Times New Roman", "Georgia", "Roboto"];
   const sizes = [10, 11, 12, 14, 16, 18, 20, 24];
 
@@ -2009,8 +2009,8 @@ function EditorPanel({ onClose }) {
     setObjectUrls((arr) => [...arr, url]);
 
     const html =
-      `<img src="${url}" class="tbm-img" ` +
-      `style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;" />`;
+       `<img src="${url}" class="tbm-img"
+        style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;" />`;
 
     editable.focus();
     const sel = window.getSelection();
@@ -2031,6 +2031,8 @@ function EditorPanel({ onClose }) {
     } catch {
       editable.insertAdjacentHTML("beforeend", html);
     }
+
+    try { onImageInserted && onImageInserted({ blobUrl: url, file: f }); } catch {}
 
     editable.focus();
     saveCurrentRangeIfEditable();
@@ -2799,7 +2801,7 @@ export default function BookDetailsPage() {
   const tocRef = React.useRef(null);
   const [contentIds, setContentIds] = React.useState([]);
   const [primaryContentId, setPrimaryContentId] = React.useState(null);
-
+  const blobImageMapRef = React.useRef(new Map());
   const [topImageUrl, setTopImageUrl] = React.useState("");
 
   const [apply, setApply] = React.useState({
@@ -3187,6 +3189,21 @@ export default function BookDetailsPage() {
     return `${b}${p}`;
   }
 
+  async function uploadInlineImage(file) {
+    const url = joinUrl(ABS_API_BASE, "/api/uploads/images/");
+    const fd = new FormData();
+    fd.append("image", file);
+    const resp = await fetch(url, { method: "POST", body: fd, credentials: "include" });
+    const text = await resp.text();
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    if (!resp.ok) throw new Error(`[${resp.status}] ${text || "Upload failed"}`);
+    // adjust according to your API shape:
+    const direct = json?.url || json?.data?.url || json?.file_url || json?.path;
+    if (!direct) throw new Error("Upload OK but URL missing in response.");
+    return isAbsoluteUrl(direct) ? direct : joinUrl(ABS_API_BASE, direct);
+  }
+
   function extractBookContentTextMap(book) {
     const map = {};
     const push = (cid, obj) => {
@@ -3358,154 +3375,242 @@ export default function BookDetailsPage() {
     return { ok: resp.ok, status: resp.status, headers: headObj, json, text, duration_ms: ms };
   }
 
-  async function handleSaveEditedPages() {
-    const WANT_MARKDOWN = true;
+ async function handleSaveEditedPages() {
+  const WANT_MARKDOWN = true;
 
-    let ids = Array.isArray(contentIds) ? contentIds.slice() : [];
-    if (!ids.length) ids = await resolveAllContentIds({ bookId, book });
-    ids = Array.from(new Set(ids.filter(Boolean))).map(String);
-    if (!ids.length) {
-      alert("No content ids available to save.");
-      return;
+  // --- helpers (local to this function) ---
+  // Upload a File to the backend and return a public URL
+  async function uploadInlineImage(file) {
+    const url = joinUrl(ABS_API_BASE, "/api/uploads/images/"); // <-- adjust if your API path differs
+    const fd = new FormData();
+    fd.append("image", file);
+    const resp = await fetch(url, { method: "POST", body: fd, credentials: "include" });
+    const text = await resp.text();
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    if (!resp.ok) throw new Error(`[${resp.status}] ${text || "Upload failed"}`);
+    const direct = json?.url || json?.data?.url || json?.file_url || json?.path;
+    if (!direct) throw new Error("Upload OK but URL missing in response.");
+    return isAbsoluteUrl(direct) ? direct : joinUrl(ABS_API_BASE, direct);
+  }
+
+  // Plain normalizer for diffing text/markdown
+  const toNorm = (h) =>
+    normalizeText(WANT_MARKDOWN ? htmlToMarkdown(String(h || "")) : String(h || ""));
+
+  // --- gather content ids ---
+  let ids = Array.isArray(contentIds) ? contentIds.slice() : [];
+  if (!ids.length) ids = await resolveAllContentIds({ bookId, book });
+  ids = Array.from(new Set(ids.filter(Boolean))).map(String);
+  if (!ids.length) {
+    alert("No content ids available to save.");
+    return;
+  }
+
+  // --- collect edited HTML from editor (or fallback to current pages) ---
+  const rawPages = typeof collectEditedHTMLRef?.current === "function"
+    ? collectEditedHTMLRef.current()
+    : (pages || []);
+  if (!Array.isArray(rawPages) || !rawPages.length) {
+    alert("No edited pages found.");
+    return;
+  }
+
+  // We will mutate this copy as we replace blob: URLs
+  let editedHTML = rawPages.slice();
+
+  // --- PRE-PROCESS: replace all blob: (and optional data:) URLs with uploaded URLs ---
+  // Find blob: in img/src, a/href, and markdown images
+  const BLOB_RE = /\b(?:src|href)=["'](blob:[^"']+)["']|\!\[[^\]]*\]\((blob:[^)]+)\)/gi;
+  // (Optional) data: URL support in HTML & markdown
+  const DATA_RE = /\b(?:src|href)=["'](data:image\/[^"']+)["']|\!\[[^\]]*\]\((data:image\/[^)]+)\)/gi;
+
+  const blobSet = new Set();
+  const dataSet = new Set();
+
+  for (const html of editedHTML) {
+    if (!html) continue;
+    let m;
+    while ((m = BLOB_RE.exec(String(html)))) {
+      const blobUrl = m[1] || m[2];
+      if (blobUrl && blobUrl.startsWith("blob:")) blobSet.add(blobUrl);
     }
-
-    const rawPages = typeof collectEditedHTMLRef?.current === "function"
-      ? collectEditedHTMLRef.current()
-      : (pages || []);
-    if (!Array.isArray(rawPages) || !rawPages.length) {
-      alert("No edited pages found.");
-      return;
-    }
-
-    const editedHTML = Array.isArray(rawPages) ? rawPages : [];
-    const baselineHTML =
-      (collectEditedHTMLRef?.current && collectEditedHTMLRef.current.__initial) ||
-      (pages || []);
-
-    const toNorm = (h) =>
-      normalizeText(WANT_MARKDOWN ? htmlToMarkdown(String(h || "")) : String(h || ""));
-
-    let dirtyIdx = [];
-    if (Array.isArray(editedHTML) && Array.isArray(baselineHTML) && baselineHTML.length) {
-      const N = Math.min(editedHTML.length, baselineHTML.length, ids.length);
-      for (let i = 0; i < N; i++) {
-        if (toNorm(editedHTML[i]) !== toNorm(baselineHTML[i])) dirtyIdx.push(i);
-      }
-    } else {
-      dirtyIdx = editedHTML.map((_, i) => i).slice(0, ids.length);
-    }
-
-    if (!dirtyIdx.length) {
-      console.info("[DIRTY] No real edits — abort.");
-      alert("Nothing changed — no updates needed.");
-      return;
-    }
-
-    let existingMap = extractBookContentTextMap(book);
-    const missing = ids.filter((id) => existingMap[id] == null);
-    if (missing.length) {
-      const fetched = await fetchExistingContentTextMap(missing);
-      existingMap = { ...existingMap, ...fetched };
-    }
-
-    const changes = [];
-    for (const i of dirtyIdx) {
-      const id = ids[i];
-      const beforeApi = normalizeText(existingMap[id]?.text || "");
-      const afterUser = toNorm(editedHTML[i]);
-      if (afterUser !== beforeApi) {
-        changes.push({ id, payload: { text: afterUser } });
-      }
-    }
-
-    if (!changes.length) {
-      console.info("[DIFF] Dirty vs baseline था, पर API text already match — nothing to send.");
-      alert("Nothing changed — already up to date.");
-      return;
-    }
-
-    console.log("[DIFF] Mismatched Content IDs:", changes.map(c => c.id));
-
-    const patchResults = [];   
-
-    const errors = [];
-    for (const { id, payload } of changes) {
-      const path = `/api/contents/${encodeURIComponent(String(id))}/`;
-      const url = joinUrl(ABS_API_BASE, path);
-
-      console.groupCollapsed(`[PATCH] id=${id}`);
-      console.log("url:", url);
-      console.log("payload (sent):", payload);
-
-      try {
-        const url = joinUrl(ABS_API_BASE, path);     
-        const resp = await requestWithLog(url, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          bodyObj: payload,    
-        });
-
-        const server = (resp && (resp.json ?? resp.text)) ?? null;
-
-        console.log("[HTTP] meta:", {
-          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url   
-        });
-
-        console.log("[PATCH] payload (sent):", payload);
-        console.log("[PATCH] response (full):\n", JSON.stringify(server, null, 2));
-
-        if (!resp.ok) {
-          throw new Error(`[${resp.status}] ${JSON.stringify(server)}`);
-        }
-
-        patchResults.push({
-          id: server?.id ?? id,
-          ok: resp.ok,
-          status: resp.status,
-          ms: resp.duration_ms,
-          sent: payload,
-          server,
-        });
-      } catch (e) {
-        console.error(`[PATCH] id=${id} failed:`, e?.message || e);
-        errors.push({ id, error: e?.message || String(e) });
-      } finally {
-        console.groupEnd();
-      }
-
-    }
-
-    if (patchResults.length) {
-      console.groupCollapsed("[PATCH] summary table");
-      console.table(
-        patchResults.map(r => ({
-          id: r.id,
-          status: r.status,
-          ok: r.ok,
-          ms: r.ms,
-          text_len: (r.server?.text || "").length,
-          updated_at: r.server?.updated_at,
-          lesson: r.server?.lesson,
-        }))
-      );
-      console.groupEnd();
-    }
-
-
-
-    if (errors.length) {
-      alert(`Saved with some errors ❗\n` + errors.map(e => `id=${e.id}: ${e.error}`).join("\n"));
-    } else {
-      if (collectEditedHTMLRef?.current) {
-        try {
-          collectEditedHTMLRef.current.__initial = editedHTML.slice();
-        } catch { }
-      }
-      alert(`Saved successfully ✅ (${changes.length} item${changes.length > 1 ? "s" : ""} updated)`);
+    while ((m = DATA_RE.exec(String(html)))) {
+      const dataUrl = m[1] || m[2];
+      if (dataUrl && dataUrl.startsWith("data:image/")) dataSet.add(dataUrl);
     }
   }
 
+  // Upload all blob: images we know the File for
+  const replacements = new Map(); // original -> https
+  if (blobSet.size) {
+    for (const blobUrl of blobSet) {
+      const file = blobImageMapRef?.current?.get(blobUrl);
+      if (!file) {
+        console.warn("No File found for blob url:", blobUrl);
+        continue; // If you want to hard-fail, you can alert/return here.
+      }
+      try {
+        const httpsUrl = await uploadInlineImage(file);
+        replacements.set(blobUrl, httpsUrl);
+      } catch (e) {
+        console.error("Upload failed for", blobUrl, e?.message || e);
+      }
+    }
+  }
 
+  // (Optional) handle data:image/* by converting to Blob->File and upload
+  if (dataSet.size) {
+    for (const dataUrl of dataSet) {
+      try {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const ext = (blob.type && blob.type.split("/")[1]) || "png";
+        const file = new File([blob], `inline.${ext}`, { type: blob.type || "image/png" });
+        const httpsUrl = await uploadInlineImage(file);
+        replacements.set(dataUrl, httpsUrl);
+      } catch (e) {
+        console.error("Upload failed for data URL", e?.message || e);
+      }
+    }
+  }
+
+  // Apply replacements to all edited pages
+  if (replacements.size) {
+    editedHTML = editedHTML.map((html) => {
+      let out = String(html || "");
+      for (const [from, to] of replacements.entries()) {
+        // simple global replace; safe here because from is a unique blob/data url
+        out = out.replaceAll(from, to);
+      }
+      return out;
+    });
+  }
+
+  // --- baseline for diffing (first load snapshot) ---
+  const baselineHTML =
+    (collectEditedHTMLRef?.current && collectEditedHTMLRef.current.__initial) ||
+    (pages || []);
+
+  // Decide which page indices are actually dirty
+  let dirtyIdx = [];
+  if (Array.isArray(editedHTML) && Array.isArray(baselineHTML) && baselineHTML.length) {
+    const N = Math.min(editedHTML.length, baselineHTML.length, ids.length);
+    for (let i = 0; i < N; i++) {
+      if (toNorm(editedHTML[i]) !== toNorm(baselineHTML[i])) dirtyIdx.push(i);
+    }
+  } else {
+    dirtyIdx = editedHTML.map((_, i) => i).slice(0, ids.length);
+  }
+
+  if (!dirtyIdx.length) {
+    console.info("[DIRTY] No real edits — abort.");
+    alert("Nothing changed — no updates needed.");
+    return;
+  }
+
+  // --- fetch existing API text for accurate diff (so we don't PATCH no-ops) ---
+  let existingMap = extractBookContentTextMap(book);
+  const missing = ids.filter((id) => existingMap[id] == null);
+  if (missing.length) {
+    const fetched = await fetchExistingContentTextMap(missing);
+    existingMap = { ...existingMap, ...fetched };
+  }
+
+  const changes = [];
+  for (const i of dirtyIdx) {
+    const id = ids[i];
+    const beforeApi = normalizeText(existingMap[id]?.text || "");
+    const afterUser = toNorm(editedHTML[i]);
+    if (afterUser !== beforeApi) {
+      changes.push({ id, payload: { text: afterUser } });
+    }
+  }
+
+  if (!changes.length) {
+    console.info("[DIFF] Dirty vs baseline था, पर API text already match — nothing to send.");
+    alert("Nothing changed — already up to date.");
+    return;
+  }
+
+  console.log("[DIFF] Mismatched Content IDs:", changes.map(c => c.id));
+
+  // --- PATCH each change ---
+  const patchResults = [];
+  const errors = [];
+
+  for (const { id, payload } of changes) {
+    const path = `/api/contents/${encodeURIComponent(String(id))}/`;
+    const url = joinUrl(ABS_API_BASE, path);
+
+    console.groupCollapsed(`[PATCH] id=${id}`);
+    console.log("url:", url);
+    console.log("payload (sent):", payload);
+
+    try {
+      const resp = await requestWithLog(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        bodyObj: payload,
+      });
+
+      const server = (resp && (resp.json ?? resp.text)) ?? null;
+
+      console.log("[HTTP] meta:", {
+        status: resp.status, ok: resp.ok, ms: resp.duration_ms, url
+      });
+
+      console.log("[PATCH] payload (sent):", payload);
+      console.log("[PATCH] response (full):\n", JSON.stringify(server, null, 2));
+
+      if (!resp.ok) {
+        throw new Error(`[${resp.status}] ${JSON.stringify(server)}`);
+      }
+
+      patchResults.push({
+        id: server?.id ?? id,
+        ok: resp.ok,
+        status: resp.status,
+        ms: resp.duration_ms,
+        sent: payload,
+        server,
+      });
+    } catch (e) {
+      console.error(`[PATCH] id=${id} failed:`, e?.message || e);
+      errors.push({ id, error: e?.message || String(e) });
+    } finally {
+      console.groupEnd();
+    }
+  }
+
+  if (patchResults.length) {
+    console.groupCollapsed("[PATCH] summary table");
+    console.table(
+      patchResults.map(r => ({
+        id: r.id,
+        status: r.status,
+        ok: r.ok,
+        ms: r.ms,
+        text_len: (r.server?.text || "").length,
+        updated_at: r.server?.updated_at,
+        lesson: r.server?.lesson,
+      }))
+    );
+    console.groupEnd();
+  }
+
+  if (errors.length) {
+    alert(`Saved with some errors ❗\n` + errors.map(e => `id=${e.id}: ${e.error}`).join("\n"));
+  } else {
+    // snapshot current HTML as the new baseline so next save only patches real new edits
+    if (collectEditedHTMLRef?.current) {
+      try {
+        collectEditedHTMLRef.current.__initial = editedHTML.slice();
+      } catch {}
+    }
+    alert(`Saved successfully ✅ (${changes.length} item${changes.length > 1 ? "s" : ""} updated)`);
+  }
+}
 
   async function handleSaveCover() {
     if (!coverFile) { alert("Please choose a cover image first."); return; }
@@ -3709,7 +3814,12 @@ export default function BookDetailsPage() {
           }}
         >
           {showEditorPanel ? (
-            <EditorPanel onClose={() => setShowEditorPanel(false)} />
+            <EditorPanel
+              onClose={() => setShowEditorPanel(false)}
+              onImageInserted={({ blobUrl, file }) => {
+                if (blobUrl && file) blobImageMapRef.current.set(blobUrl, file);
+              }}
+            />
           ) : showThemePanel ? (
             <ThemePanel
               selectedThemeKey={selectedThemeKey}
