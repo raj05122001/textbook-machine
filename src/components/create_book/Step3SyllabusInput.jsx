@@ -216,6 +216,7 @@ const [sourceMix, setSourceMix] = useState({ primary: 80, trusted: 15, internet:
   onOptionChange={setSourceOption}
   value={sourceMix}
   onChange={setSourceMix}
+  bookId={bookId}
 />
     </div>
   );

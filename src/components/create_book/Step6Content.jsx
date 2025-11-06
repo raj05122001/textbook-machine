@@ -14,7 +14,7 @@ function TypingDots() {
   );
 }
 
-export function Step5Content({ isStreaming, processingStep, contentPhase, lessonProgress, contentJson }) {
+export function Step6Content({ isStreaming, processingStep, contentPhase, lessonProgress, contentJson }) {
   const [openPayload, setOpenPayload] = useState(null);
   // stable ordering by first-seen time
   const lessonsArr = Object.values(lessonProgress || {}).sort(

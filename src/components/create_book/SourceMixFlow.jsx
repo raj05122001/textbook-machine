@@ -1,15 +1,27 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { TriangleAlert, Check, Plus, Trash2 } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  TriangleAlert,
+  Check,
+  Plus,
+  Trash2,
+  Upload as UploadIcon,
+  Save,
+  Loader2,
+} from "lucide-react";
+import { axiosInstance } from "@/axios/AxiosInstans"; // <-- same path you use elsewhere
+import toast from "react-hot-toast";
 
-/* ---------- utils ---------- */
+/* ------------------------------- constants ------------------------------- */
+const WS_URL = "wss://tbmplus-backend.ultimeet.io/ws/vectorize/";
 const clamp = (n) => Math.max(0, Math.min(100, Number.isFinite(n) ? n : 0));
+
 function normalize3(a, b, c) {
   const A = clamp(a), B = clamp(b), C = clamp(c);
   const sum = A + B + C || 1;
-  const primary  = Math.round((A * 100) / sum);
-  const trusted  = Math.round((B * 100) / sum);
+  const primary = Math.round((A * 100) / sum);
+  const trusted = Math.round((B * 100) / sum);
   const internet = clamp(100 - primary - trusted);
   return { primary, trusted, internet };
 }
@@ -23,45 +35,160 @@ const isHttpUrl = (s) => {
   }
 };
 
+/* ----------------------------- helper: upload ---------------------------- */
+async function getPresign({ fileName, fileType }) {
+  // Your backend accepts JSON here (you used this in CreatePrimaryBook)
+  const { data } = await axiosInstance.post("/get_presigned_url/", {
+    file_name: fileName,
+    file_type: fileType || "application/pdf",
+    operation: "upload",
+    folder: "book",
+  });
+  const wrapped = data?.data || {};
+  return {
+    s3_key: wrapped.s3_key, // e.g. "book/xxx.pdf"
+    upload_url: wrapped.presigned_url,
+    fields: null, // if ever switch to POST form, support is below
+    headers: { "Content-Type": fileType || "application/pdf" },
+  };
+}
+
+async function uploadToS3(presign, fileObj, onProgress) {
+  if (presign.upload_url && !presign.fields) {
+    // PUT upload
+    const resp = await fetch(presign.upload_url, {
+      method: "PUT",
+      headers: { ...(presign.headers || {}) },
+      body: fileObj,
+    });
+    if (!resp.ok) throw new Error(`S3 PUT failed: ${resp.status}`);
+    onProgress?.(100);
+    return;
+  }
+  if (presign.upload_url && presign.fields) {
+    // POST multipart (kept for future)
+    const fd = new FormData();
+    Object.entries(presign.fields).forEach(([k, v]) => fd.append(k, v));
+    fd.append("file", fileObj);
+    const resp = await fetch(presign.upload_url, { method: "POST", body: fd });
+    if (!resp.ok) throw new Error(`S3 POST failed: ${resp.status}`);
+    onProgress?.(100);
+    return;
+  }
+  throw new Error("Invalid presign response");
+}
+
+/* --------------------------- helper: primary_knowledge -------------------------- */
+async function createPrimaryKnowledgeRecords({ records }) {
+  // payload: { records: [ {s3_path_key, subject, standard, book_type, book_language}, ... ] }
+  const { data } = await axiosInstance.post("/primary_knowledge/", { records }, {
+    headers: { "Content-Type": "application/json" },
+  });
+  // Expecting { knowledge_ids: [ ... ] }
+  const ids = data?.knowledge_ids || [];
+  if (!Array.isArray(ids) || !ids.length) throw new Error("No knowledge_ids returned");
+  return ids;
+}
+
+/* ------------------------------- helper: WS ------------------------------ */
+function vectorizeOverWS(knowledgeIds) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(WS_URL);
+
+    const cleanup = () => {
+      try { ws.close(); } catch {}
+    };
+
+    ws.onopen = () => {
+      const msg = {
+        type: "vectorize_book",
+        knowledge_ids: knowledgeIds,
+        while_book_generation: false,
+      };
+      ws.send(JSON.stringify(msg));
+    };
+
+    ws.onerror = (e) => {
+      cleanup();
+      reject(new Error("WebSocket error"));
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const payload = JSON.parse(evt.data || "{}");
+        // optional: { status:"started" | "completed" | "all_completed", ...}
+        if (payload?.status === "started") {
+          // no-op
+        } else if (payload?.status === "completed") {
+          // one id done
+        } else if (payload?.status === "all_completed") {
+          cleanup();
+          resolve(true);
+        }
+      } catch {
+        // ignore junk frames
+      }
+    };
+
+    ws.onclose = () => {
+      // If it closed before "all_completed", still resolve gracefully.
+      // Most of the time we’ll already have resolved on all_completed.
+    };
+  });
+}
+
+/* -------------------------------- component ------------------------------ */
 export default function SourceMixFlow({
-  option,
+  option,                 // 'upload' | 'primary' | 'mixture'
   onOptionChange,
-  value,
+  value,                  // { primary, trusted, internet, urls }
   onChange,
   title = "Content Preferences",
+  bookId,                 // required for /api/content_preferences/
+  subject,                // subject name (string)
+  formData,               // { language, educational_level, category }
 }) {
   const defaultMix = { primary: 80, trusted: 15, internet: 5, urls: ["", ""] };
 
   const isMixture = option === "mixture";
+  const isUpload  = option === "upload";
+  const isPrimaryOnly = option === "primary";
 
-  // Keep local urls state, sync with value?.urls
-  const [urls, setUrls] = useState(() => Array.isArray(value?.urls) ? value.urls : []);
-
+  // URLs (mixture)
+  const [urls, setUrls] = useState(() =>
+   Array.isArray(value?.urls) && value.urls.length ? value.urls : ["", ""]
+ );
   useEffect(() => {
     if (Array.isArray(value?.urls)) setUrls(value.urls);
   }, [value?.urls]);
 
+  // Files (upload)
+  const [files, setFiles] = useState([]);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const onPickFiles = (e) => setFiles(Array.from(e.target.files || []));
+
+  // Mix derived
   const mix = useMemo(() => {
-    const v = isMixture ? (value || defaultMix) : { primary: 100, trusted: 0, internet: 0, urls: [] };
-    return normalize3(v.primary ?? 0, v.trusted ?? 0, v.internet ?? 0);
-  }, [option, value, isMixture]);
+    if (isMixture) {
+      const v = value || defaultMix;
+      return normalize3(v.primary ?? 0, v.trusted ?? 0, v.internet ?? 0);
+    }
+    if (isPrimaryOnly) return { primary: 100, trusted: 0, internet: 0 };
+    return { primary: 0, trusted: 0, internet: 0 };
+  }, [option, value, isMixture, isPrimaryOnly]);
 
   const total = mix.primary + mix.trusted + mix.internet;
 
   const emitChange = (next) => {
-    // Always include urls when emitting in mixture mode for upstream consumers
-    if (isMixture) {
-      onChange?.({ ...next, urls });
-    } else {
-      onChange?.(next);
-    }
+    if (isMixture) onChange?.({ ...next, urls });
+    else onChange?.(next);
   };
 
-  /** keep total 100 while sliding in mixture mode */
+  // Sliders keep 100
   const updateOne = (which, nextVal) => {
     if (!isMixture) return;
     nextVal = clamp(nextVal);
-
     if (which === "primary") {
       const rest = 100 - nextVal;
       const t = mix.trusted, i = mix.internet, sum = t + i || 1;
@@ -88,101 +215,284 @@ export default function SourceMixFlow({
     if (opt === "mixture" && !value) onChange?.(defaultMix);
   };
 
-  // Ensure at least two URL inputs whenever trusted > 0
+  // Ensure URL slots when trusted > 0
   useEffect(() => {
-    if (!isMixture) return;
-    if (mix.trusted > 0) {
-      setUrls((prev) => {
-        const arr = Array.isArray(prev) ? [...prev] : [];
-        if (arr.length >= 2) return arr;
-        if (arr.length === 0) return ["", ""];
-        if (arr.length === 1) return [arr[0], ""];
-        return arr;
-      });
-    }
-  }, [mix.trusted, isMixture]);
+   if (!isMixture) return;
+   setUrls((prev) => {
+     const arr = Array.isArray(prev) ? [...prev] : [];
+     if (arr.length >= 2) return arr;
+     if (arr.length === 0) return ["", ""];
+     if (arr.length === 1) return [arr[0], ""];
+     return arr;
+   });
+ }, [isMixture]);
 
-  // Push URL changes upstream together with weights
   const handleUrlsChange = (nextUrls) => {
     setUrls(nextUrls);
-    if (isMixture) {
-      emitChange({ primary: mix.primary, trusted: mix.trusted, internet: mix.internet });
+    if (isMixture) emitChange({ primary: mix.primary, trusted: mix.trusted, internet: mix.internet });
+  };
+
+  /* ------------------------- payload for preferences ------------------------- */
+  const buildPreferencesPayload = ({ mode, knowledgeIds = [] }) => {
+    const payload = {
+      book: Number(bookId) || bookId,
+      preferences: "UPLOADED",
+      primary_metadata: [],
+      mix_ratio: {
+        primary_knowledge_percent: 0,
+        trusted_url_percent: 0,
+        internet_percent: 0,
+      },
+      trusted_source_links: [],
+    };
+
+    if (mode === "upload") {
+      payload.preferences = "UPLOADED";
+      payload.primary_metadata = knowledgeIds; // IMPORTANT: you wanted IDs here
+      return payload;
+    }
+
+    // Both primary-only & mixture use MIX
+    payload.preferences = "MIX";
+
+    if (mode === "primary") {
+      payload.mix_ratio.primary_knowledge_percent = 100;
+      payload.mix_ratio.trusted_url_percent = 0;
+      payload.mix_ratio.internet_percent = 0;
+      return payload;
+    }
+
+    // mixture
+    payload.mix_ratio.primary_knowledge_percent = clamp(mix.primary);
+    payload.mix_ratio.trusted_url_percent = clamp(mix.trusted);
+    payload.mix_ratio.internet_percent = clamp(mix.internet);
+
+    if (payload.mix_ratio.trusted_url_percent > 0) {
+      payload.trusted_source_links = (Array.isArray(urls) ? urls : [])
+        .map((u) => String(u || "").trim())
+        .filter((u) => u.length > 0 && isHttpUrl(u));
+    }
+    return payload;
+  };
+
+  /* ----------------------------- onClick: Save ----------------------------- */
+  const canSave =
+    (isUpload && true) ||
+    (isPrimaryOnly && true) ||
+    (isMixture &&
+      (mix.trusted === 0 ||
+        (mix.trusted > 0 && (urls || []).some((u) => isHttpUrl(String(u).trim())))));
+
+  const onClickSave = async () => {
+    if (!bookId) {
+      toast.error("bookId is required for saving preferences.");
+      return;
+    }
+
+    try {
+      setBusy(true);
+
+      if (isUpload) {
+        if (!files.length) {
+          toast.error("Please choose at least one file to upload.");
+          return;
+        }
+
+        // 1) upload each file → collect s3 keys
+        const keys = [];
+        for (const file of files) {
+          setUploadPct(5);
+          const presign = await getPresign({ fileName: file.name, fileType: file.type });
+          await uploadToS3(presign, file, (p) => setUploadPct(p));
+          if (!presign.s3_key) throw new Error("s3_key missing from presign response");
+          keys.push(presign.s3_key);
+        }
+
+        // 2) create primary_knowledge records for those keys
+        const records = keys.map((k) => ({
+          s3_path_key: k,
+          subject: String(subject || "").trim() || undefined,
+          standard: String(formData?.educational_level || "").trim() || undefined,
+          book_type: String(formData?.category || "").trim() || undefined,
+          book_language: String(formData?.language || "").trim().toUpperCase() || undefined,
+        }));
+        const knowledgeIds = await createPrimaryKnowledgeRecords({ records });
+
+        // 3) vectorize over WS and wait until all_completed
+        await vectorizeOverWS(knowledgeIds);
+
+        // 4) save content preferences with UPLOADED + IDs in primary_metadata
+        const payload = buildPreferencesPayload({ mode: "upload", knowledgeIds });
+        await axiosInstance.post("/content_preferences/", payload, {
+          headers: { "Content-Type": "application/json" },
+        });
+
+        toast.success("Uploaded, vectorized and preferences saved.");
+        setFiles([]);
+        setUploadPct(0);
+        return;
+      }
+
+      if (isPrimaryOnly) {
+        const payload = buildPreferencesPayload({ mode: "primary" });
+        await axiosInstance.post("/content_preferences/", payload, {
+          headers: { "Content-Type": "application/json" },
+        });
+        toast.success("Preferences saved (Primary 100%).");
+        return;
+      }
+
+      // mixture
+      const payload = buildPreferencesPayload({ mode: "mixture" });
+      await axiosInstance.post("/content_preferences/", payload, {
+        headers: { "Content-Type": "application/json" },
+      });
+      toast.success("Preferences saved (Mixture).");
+    } catch (err) {
+      console.error(err);
+      toast.error(typeof err?.message === "string" ? err.message : "Failed to save.");
+    } finally {
+      setBusy(false);
+      setUploadPct(0);
     }
   };
 
+  /* ---------------------------------- UI ---------------------------------- */
   return (
-    <div className="w-full rounded-2xl border bg-white p-6 shadow-sm">
+    <div className="w-full">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold">{title}</h3>
-        <span className="text-sm text-gray-500">Total: {total}%</span>
       </div>
 
-      {/* Top: three option tiles (checkbox look, but mutually exclusive) */}
+      {/* Options */}
       <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
         <OptionTile
-          active={option === "upload"}
+          active={isUpload}
           subtitle="Upload all Materials"
           onClick={() => handleChoose("upload")}
         />
         <OptionTile
-          active={option === "primary"}
-          subtitle="Refer to Primary DB"
+          active={isPrimaryOnly}
+          subtitle="Primary Only"
           onClick={() => handleChoose("primary")}
         />
         <OptionTile
-          active={option === "mixture"}
+          active={isMixture}
           subtitle="Mixture of all"
           onClick={() => handleChoose("mixture")}
         />
       </div>
 
+      {/* Upload UI */}
+      {isUpload && (
+        <div className="mb-6 rounded-xl border bg-slate-50 p-4">
+          <div className="mb-2 font-semibold">Upload your files</div>
+          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3 hover:bg-white">
+            <div className="flex items-center gap-3">
+              <UploadIcon className="h-5 w-5" />
+              <div className="text-sm text-gray-700">
+                Choose files (PDF, DOCX, Images, etc.)
+              </div>
+            </div>
+            <input type="file" multiple onChange={onPickFiles} className="hidden" />
+            <span className="rounded-md border bg-white px-3 py-1 text-sm">Browse</span>
+          </label>
+
+          {files.length > 0 && (
+            <>
+              <ul className="mt-3 list-disc pl-5 text-sm text-gray-600">
+                {files.map((f, i) => (
+                  <li key={i}>
+                    {f.name}{" "}
+                    <span className="text-xs text-gray-400">({f.size} bytes)</span>
+                  </li>
+                ))}
+              </ul>
+              {busy && (
+                <div className="mt-3 h-2 w-full overflow-hidden rounded bg-gray-200">
+                  <div
+                    className="h-2 bg-blue-600 transition-all"
+                    style={{ width: `${Math.min(99, uploadPct)}%` }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Sliders */}
-      {option === "mixture" && (
+      {isMixture && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <SliderCard
             title="Primary DB (Reviewed Books)"
             value={mix.primary}
-            disabled={!isMixture}
+            disabled={!isMixture || busy}
             onChange={(v) => updateOne("primary", v)}
           />
           <SliderCard
             title="Trusted Sources (URLs)"
             value={mix.trusted}
-            disabled={!isMixture}
+            disabled={!isMixture || busy}
             onChange={(v) => updateOne("trusted", v)}
           />
           <SliderCard
             title="Internet"
             value={mix.internet}
-            disabled={!isMixture}
+            disabled={!isMixture || busy}
             onChange={(v) => updateOne("internet", v)}
           />
         </div>
       )}
 
-      {/* URL Inputs (only when Trusted > 0) */}
-      {isMixture && mix.trusted > 0 && (
-        <div className="mt-6 rounded-xl border bg-slate-50 p-4">
-          <UrlFields
-            urls={urls}
-            onChange={handleUrlsChange}
-            minCount={1}
-          />
-        </div>
-      )}
+      {/* URLs when trusted > 0 */}
+      {isMixture && (
+   <div className="mt-6 rounded-xl border bg-slate-50 p-4">
+     <UrlFields
+       urls={urls}
+       onChange={handleUrlsChange}
+       minCount={2}
+       disabled={busy || mix.trusted === 0}   // 0% par inputs visible but disabled
+     />
+     {mix.trusted === 0 && (
+       <p className="mt-2 text-xs text-gray-500">
+         Increase “Trusted Sources (URLs)” weight to enable these fields.
+       </p>
+     )}
+   </div>
+ )}
 
-      {/* note: auto-normalize info */}
       {isMixture && total !== 100 && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-amber-800">
           <TriangleAlert className="h-4 w-4" />
           <span>Total is auto-normalized to 100%. Current: {total}%</span>
         </div>
       )}
+
+      {/* Save */}
+      <div className="mt-6 flex items-center justify-end gap-3">
+        {!canSave && isMixture && mix.trusted > 0 && (
+          <div className="mr-auto flex items-center gap-2 text-sm text-amber-700">
+            <TriangleAlert className="h-4 w-4" />
+            Add at least one valid http/https URL when Trusted &gt; 0.
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onClickSave}
+          disabled={!canSave || busy}
+          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+          title="Save content preferences"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {busy ? "Working…" : "Save Preferences"}
+        </button>
+      </div>
     </div>
   );
 }
 
-/* ---------- small subcomponents ---------- */
+/* ------------------------------- subcomponents ------------------------------- */
 function OptionTile({ active, subtitle, onClick }) {
   return (
     <button
@@ -229,8 +539,7 @@ function SliderCard({ title, value, disabled, onChange }) {
   );
 }
 
-/* ---------- URL Fields (dynamic) ---------- */
-function UrlFields({ urls, onChange, minCount = 1 }) {
+function UrlFields({ urls, onChange, minCount = 2, disabled }) {
   const addRow = () => onChange([...(urls || []), ""]);
   const updateRow = (idx, val) => {
     const next = [...(urls || [])];
@@ -243,7 +552,6 @@ function UrlFields({ urls, onChange, minCount = 1 }) {
     onChange(next.length ? next : ["", ""]);
   };
 
-  // Guarantee minimum rows
   useEffect(() => {
     const arr = Array.isArray(urls) ? urls : [];
     if (arr.length < minCount) {
@@ -257,13 +565,15 @@ function UrlFields({ urls, onChange, minCount = 1 }) {
   return (
     <div className="space-y-3">
       {list.map((u, i) => {
-        const valid = u.trim() === "" ? true : isHttpUrl(u);
+        const trimmed = String(u || "").trim();
+        const valid = trimmed === "" ? true : isHttpUrl(trimmed);
         return (
           <div key={i} className="flex items-start gap-2">
             <input
               type="url"
               placeholder={`https://example.com/resource #${i + 1}`}
               value={u}
+              disabled={disabled}
               onChange={(e) => updateRow(i, e.target.value)}
               className={[
                 "w-full rounded-lg border px-3 py-2 text-sm outline-none",
@@ -273,7 +583,8 @@ function UrlFields({ urls, onChange, minCount = 1 }) {
             <button
               type="button"
               onClick={() => addRow()}
-              className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm hover:bg-gray-100"
+              disabled={disabled}
+              className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm hover:bg-gray-100 disabled:opacity-50"
               aria-label="Add URL"
               title="Add URL"
             >
@@ -281,8 +592,8 @@ function UrlFields({ urls, onChange, minCount = 1 }) {
             </button>
             <button
               type="button"
-              onClick={() => i >= minCount ? removeRow(i) : null}
-              disabled={list.length <= minCount}
+              onClick={() => (i >= minCount ? removeRow(i) : null)}
+              disabled={disabled || list.length <= minCount}
               className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm hover:bg-gray-100 disabled:opacity-50"
               aria-label="Remove URL"
               title={list.length <= minCount ? `Minimum ${minCount} URLs required` : "Remove URL"}
@@ -292,8 +603,6 @@ function UrlFields({ urls, onChange, minCount = 1 }) {
           </div>
         );
       })}
-
-      {/* quick hint + invalid note */}
       <div className="text-xs text-gray-500">
         Hint: http/https links only. Invalid links will be highlighted in red.
       </div>

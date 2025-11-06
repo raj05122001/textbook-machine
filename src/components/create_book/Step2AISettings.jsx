@@ -40,7 +40,7 @@ export function Step2AISettings({
           >
             <option value="OPENAI">OPENAI 4o (Recommended)</option>
             <option value="CLAUDE">CLAUDE</option>
-            <option value="GEMINI">GEMINI</option>
+            {/* <option value="GEMINI">GEMINI</option> */}
           </select>
           <p className="text-sm text-gray-500 mt-1">
             OPENAI provides a great balance of quality and speed
