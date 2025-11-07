@@ -12,7 +12,6 @@ import { axiosInstance } from "@/axios/AxiosInstans";
 import usePresignedUrl from "@/axios/apiHelper";
 import toast from "react-hot-toast";
 
-/* ---------- helpers ---------- */
 function toNiceDate(iso) {
   try {
     const d = new Date(iso);
@@ -49,7 +48,6 @@ function guessMimeByExt(name = "") {
   return "application/octet-stream";
 }
 
-/* ---------- tiny UI bits ---------- */
 function MetaRow({ icon: Icon, label, value }) {
   return (
     <div className="flex items-start gap-3">
@@ -81,14 +79,24 @@ function Chip({ children, tone = "indigo" }) {
     </span>
   );
 }
+function toNiceDateOnly(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+    });
+  } catch {
+    return iso || "-";
+  }
+}
 
-export default function PrimaryKnowledgePage({updateState}) {
+export default function PrimaryKnowledgePage({ updateState }) {
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
-
   const [downloadingId, setDownloadingId] = React.useState(null);
-
   const { fetchPresignedUrl } = usePresignedUrl();
 
   React.useEffect(() => {
@@ -169,8 +177,8 @@ export default function PrimaryKnowledgePage({updateState}) {
       ) : null}
 
       {loading ? (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
               className="h-48 animate-pulse rounded-2xl border border-gray-200 bg-white/60"
@@ -178,16 +186,20 @@ export default function PrimaryKnowledgePage({updateState}) {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => {
             const fileName = fileNameFromKey(item.s3_path_key);
             return (
               <div
                 key={item.id}
-                className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+                className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-xl"
               >
-                <div className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 p-5 text-white">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative p-5 text-white">
+                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600" />
+                  <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
+                  <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10 blur-xl" />
+
+                  <div className="relative flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <Chip tone="amber">{item.standard}</Chip>
@@ -198,15 +210,14 @@ export default function PrimaryKnowledgePage({updateState}) {
                         {fileName}
                       </h2>
                     </div>
+
+
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-6 p-6 sm:grid-cols-2">
-                  <MetaRow
-                    icon={FileText}
-                    label="Type"
-                    value={item.book_type}
-                  />
+                <div className="grid grid-cols-1 gap-6 p-6 sm:grid-cols-2 text-xs">
+
+                  <MetaRow icon={FileText} label="Type" value={item.book_type} />
                   <MetaRow
                     icon={BookOpen}
                     label="Subject"
@@ -224,24 +235,30 @@ export default function PrimaryKnowledgePage({updateState}) {
                   />
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-gray-50/60 px-6 py-4">
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium text-gray-800">
-                      {toNiceDate(item.created_at)}
+                <div className="mt-auto flex items-center justify-between gap-2 border-t bg-gray-50/60 px-4 py-3">
+                  <div className="min-w-0 text-xs sm:text-sm text-gray-600">
+                    <span className="font-medium text-gray-600 truncate inline-block align-middle max-w-[55vw] sm:max-w-none">
+                      {toNiceDateOnly(item.created_at)}
                     </span>
-                    <span className="ml-2 text-gray-500">• ID #{item.id}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => handleDownload(item)}
                       disabled={downloadingId === item.id}
-                      className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3.5 py-2 text-sm font-medium text-white shadow hover:bg-black disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-2.5 py-1.5 text-xs sm:text-sm font-medium text-white shadow hover:bg-black disabled:opacity-60 group-hover:ring-2 group-hover:ring-gray-900/10 whitespace-nowrap"
                     >
-                      <Download className="h-4 w-4" />
-                      {downloadingId === item.id ? "Preparing…" : "Download"}
+                      <Download className="h-2.5 w-2.5 sm:h-1 sm:w-1" />
+                      <span className="hidden xs:inline sm:inline">
+                        {downloadingId === item.id ? "Preparing…" : "Download"}
+                      </span>
                     </button>
                   </div>
                 </div>
+
+
+
+                <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-black/5 group-hover:ring-black/10" />
               </div>
             );
           })}

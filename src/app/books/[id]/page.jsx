@@ -639,8 +639,8 @@ function bookToPagesWithTheme(book, theme) {
   const accent = theme?.accent || "#2563eb";
   const accent2 = theme?.accent2 || "#60a5fa";
   const hasBgImg = !!theme?.page_bg_image;
-  const blockBg = hasBgImg ? "transparent" : page_bg;               
-  const tableBg = hasBgImg ? "transparent" : page_bg;             
+  const blockBg = hasBgImg ? "transparent" : page_bg;
+  const tableBg = hasBgImg ? "transparent" : page_bg;
   const thBg = hasBgImg ? "transparent" : "rgba(37,99,235,.06)";
 
 
@@ -1374,7 +1374,7 @@ function ThemePanel({
           accept="image/*"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file && onPickImage) onPickImage(file); 
+            if (file && onPickImage) onPickImage(file);
           }}
           style={{
             position: "absolute",
@@ -1414,7 +1414,7 @@ function ThemePanel({
 
         <button
           type="button"
-          onClick={onSaveCover}                  
+          onClick={onSaveCover}
           disabled={!coverFile || savingCover}
           style={{
             height: 36,
@@ -1936,47 +1936,47 @@ function EditorPanel({ onClose }) {
   }
 
   function cmd(command, value = null) {
-  try {
-    // 1) Restore last saved selection if available
-    const sel = window.getSelection && window.getSelection();
-    if (sel) {
-      sel.removeAllRanges();
-      if (lastRangeRef.current) {
+    try {
+      // 1) Restore last saved selection if available
+      const sel = window.getSelection && window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        if (lastRangeRef.current) {
+          try {
+            sel.addRange(lastRangeRef.current);
+          } catch { }
+        }
+      }
+
+      // 2) Freeze current scroll position
+      const prevY = window.scrollY || document.documentElement.scrollTop || 0;
+
+      // 3) Exec the command
+      document.execCommand(command, false, value);
+
+      // 4) Focus the *same* editable root without scrolling
+      const target =
+        lastEditableElRef.current ||
+        document.activeElement?.closest?.('[data-editable="true"]') ||
+        document.querySelector('[data-editable="true"]'); // fallback only
+
+      if (target && target.focus) {
         try {
-          sel.addRange(lastRangeRef.current);
-        } catch {}
+          target.focus({ preventScroll: true });
+        } catch {
+          target.focus();
+        }
       }
-    }
 
-    // 2) Freeze current scroll position
-    const prevY = window.scrollY || document.documentElement.scrollTop || 0;
-
-    // 3) Exec the command
-    document.execCommand(command, false, value);
-
-    // 4) Focus the *same* editable root without scrolling
-    const target =
-      lastEditableElRef.current ||
-      document.activeElement?.closest?.('[data-editable="true"]') ||
-      document.querySelector('[data-editable="true"]'); // fallback only
-
-    if (target && target.focus) {
-      try {
-        target.focus({ preventScroll: true });
-      } catch {
-        target.focus();
+      // 5) Restore scroll position (belt & suspenders)
+      if ((window.scrollY || document.documentElement.scrollTop || 0) !== prevY) {
+        window.scrollTo({ top: prevY, left: 0, behavior: "instant" in window ? "instant" : "auto" });
       }
-    }
 
-    // 5) Restore scroll position (belt & suspenders)
-    if ((window.scrollY || document.documentElement.scrollTop || 0) !== prevY) {
-      window.scrollTo({ top: prevY, left: 0, behavior: "instant" in window ? "instant" : "auto" });
-    }
-
-    // 6) Save the latest selection again
-    saveCurrentRangeIfEditable();
-  } catch {}
-}
+      // 6) Save the latest selection again
+      saveCurrentRangeIfEditable();
+    } catch { }
+  }
 
 
   function makeLink() {
@@ -1999,26 +1999,87 @@ function EditorPanel({ onClose }) {
     cmd("hiliteColor", e.target.value);
   }
 
-  function insertImageFromFile(f) {
+  /** ======== S3 upload helpers (paste near the top of the file) ======== */
+  const TBM_BACKEND_BASE = "https://tbmplus-backend.ultimeet.io";
+  const PRESIGN_PATH = "/api/get_presigned_url/";
+  const S3_PUBLIC_BASE = "https://tbm-plus.s3.amazonaws.com";
+
+  function s3PublicUrlFromKey(key = "") {
+    // Keep slashes readable, escape the rest
+    return `${S3_PUBLIC_BASE}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
+  }
+
+  async function getPresignedUrl({ fileName, fileType, folder = "internet_images" }) {
+    const url = `${TBM_BACKEND_BASE}${PRESIGN_PATH}`;
+    const body = {
+      file_name: fileName,
+      // The API example shows "application/image"; we'll prefer the real mime if available.
+      file_type: fileType || "application/image",
+      operation: "upload",
+      folder
+    };
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // add credentials: "include" if your API expects cookies/session
+      // credentials: "include",
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const t = await resp.text().catch(() => "");
+      throw new Error(`Presign failed [${resp.status}]: ${t || "unknown error"}`);
+    }
+
+    const json = await resp.json();
+    if (!json?.success || !json?.data?.presigned_url || !json?.data?.s3_key) {
+      throw new Error("Presign response missing fields.");
+    }
+
+    return { presignedUrl: json.data.presigned_url, s3Key: json.data.s3_key };
+  }
+
+  async function putToS3(presignedUrl, file) {
+    const resp = await fetch(presignedUrl, {
+      method: "PUT",
+      headers: {
+        // S3 signed URLs are content-type sensitive; match the same type used to presign.
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
+    });
+    if (!resp.ok) {
+      const t = await resp.text().catch(() => "");
+      throw new Error(`S3 upload failed [${resp.status}]: ${t || "unknown error"}`);
+    }
+  }
+
+  async function insertImageFromFile(f) {
     const editable =
       lastEditableElRef.current ||
       document.activeElement?.closest?.('[data-editable="true"]');
-    if (!editable) return;
+    if (!editable || !f) return;
 
-    const url = URL.createObjectURL(f);
-    setObjectUrls((arr) => [...arr, url]);
+    const blobUrl = URL.createObjectURL(f);
+    setObjectUrls((arr) => [...arr, blobUrl]);
+
+    const tempId = `tbm-up-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
 
     const html =
-      `<img src="${url}" class="tbm-img" ` +
-      `style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;" />`;
+      `<img id="${tempId}" src="${blobUrl}" class="tbm-img" ` +
+      `data-uploading="true" ` +
+      `style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;opacity:.75;outline:2px dashed #94a3b8;outline-offset:4px;" />`;
 
     editable.focus();
     const sel = window.getSelection();
-    sel.removeAllRanges();
+    sel?.removeAllRanges();
 
     if (lastRangeRef.current) {
       try {
-        sel.addRange(lastRangeRef.current);
+        sel?.addRange(lastRangeRef.current);
       } catch {
         placeCaretAtEnd(editable);
       }
@@ -2034,17 +2095,62 @@ function EditorPanel({ onClose }) {
 
     editable.focus();
     saveCurrentRangeIfEditable();
+
+    const tempImg = document.getElementById(tempId);
+    if (!tempImg) {
+      console.warn("Temp image element not found; leaving blob URL.");
+      return;
+    }
+
+    try {
+      const { presignedUrl, s3Key } = await getPresignedUrl({
+        fileName: f.name || "image",
+        fileType: f.type || "application/image",
+        folder: "internet_images",
+      });
+
+      await putToS3(presignedUrl, f);
+
+      const finalUrl = s3PublicUrlFromKey(s3Key);
+      tempImg.src = finalUrl;
+      tempImg.style.opacity = "1";
+      tempImg.style.outline = "none";
+      tempImg.removeAttribute("id");
+      tempImg.removeAttribute("data-uploading");
+      tempImg.dataset.s3Key = s3Key;
+      tempImg.dataset.srcOriginal = finalUrl;
+
+      try {
+        URL.revokeObjectURL(blobUrl);
+      } catch { }
+
+    } catch (err) {
+      console.error("Image upload pipeline failed:", err);
+      tempImg.style.opacity = "1";
+      tempImg.style.outline = "2px solid #ef4444";
+      tempImg.title = `Upload failed: ${err?.message || err}`;
+
+    } finally {
+      saveCurrentRangeIfEditable();
+    }
   }
+
+  async function onFileChange(e) {
+    const f = e.target.files && e.target.files[0];
+    if (f) {
+      try {
+        await insertImageFromFile(f);
+      } finally {
+        e.target.value = "";
+      }
+    }
+  }
+
 
   function onPickImageClick() {
     if (fileRef.current) fileRef.current.click();
   }
-  function onFileChange(e) {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    insertImageFromFile(f);
-    e.target.value = "";
-  }
+
 
   function beginResize(dir, e) {
     if (!selectedImg) return;
@@ -2399,6 +2505,7 @@ function EditorPanel({ onClose }) {
     </aside>
   );
 }
+
 function DocView({
   pages,
   fontSize = 16,
@@ -2465,7 +2572,7 @@ function DocView({
     if (el.innerHTML !== nextHtml) el.innerHTML = nextHtml;
     hydratedOnceRef.current.add(idx);
   }
-    React.useEffect(() => {
+  React.useEffect(() => {
     if (!pages?.length) return;
     // While editing, freeze auto page-detection to avoid scroll jumps.
     const opts = { root: null, rootMargin: "0px 0px -50% 0px", threshold: [0.33, 0.66, 1] };
@@ -2892,7 +2999,7 @@ export default function BookDetailsPage() {
       }
       return url;
     });
-    setCoverFile(file);          
+    setCoverFile(file);
   }, []);
 
   const handlePickImageUrl = React.useCallback((url) => {
@@ -2902,7 +3009,7 @@ export default function BookDetailsPage() {
       }
       return url;
     });
-    setCoverFile(null);            
+    setCoverFile(null);
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   }, []);
 
@@ -2931,7 +3038,7 @@ export default function BookDetailsPage() {
         console.log("book.theme_json.id:", B?.theme_json?.id);
         console.groupEnd();
         const all = collectAllContentIdsFromBook(B);
-        setContentIds(all); 
+        setContentIds(all);
         console.groupCollapsed("[CID] all content ids (payload)");
         console.table(all);
         console.groupEnd();
@@ -2942,7 +3049,7 @@ export default function BookDetailsPage() {
         setBook(null);
         setContentIds([]);
       } finally {
-        if (mounted) setLoading(false); 
+        if (mounted) setLoading(false);
       }
     })();
 
@@ -2951,14 +3058,14 @@ export default function BookDetailsPage() {
 
 
   React.useEffect(() => {
-    userPickedRef.current = false;   
+    userPickedRef.current = false;
     setSelectedThemeKey("");
   }, [bookId]);
 
   React.useEffect(() => {
     const apiThemeId = book?.theme_json?.id ? String(book.theme_json.id).trim() : "";
     const available = themeKeys || [];
-    if (!available.length) return; 
+    if (!available.length) return;
 
     const matchKey = findKeyByThemeId(pageThemes, apiThemeId);
 
@@ -3058,7 +3165,7 @@ export default function BookDetailsPage() {
     return active;
   }, [groupedTOC, currentPage]);
 
-    React.useEffect(() => {
+  React.useEffect(() => {
     const id = activePointer?.firstPage ? `toc-${activePointer.firstPage}` : "";
     const el = id ? document.getElementById(id) : null;
     // Ensure we only scroll the TOC's own scroll container, not the whole page.
@@ -3426,7 +3533,7 @@ export default function BookDetailsPage() {
 
     console.log("[DIFF] Mismatched Content IDs:", changes.map(c => c.id));
 
-    const patchResults = [];   
+    const patchResults = [];
 
     const errors = [];
     for (const { id, payload } of changes) {
@@ -3438,17 +3545,17 @@ export default function BookDetailsPage() {
       console.log("payload (sent):", payload);
 
       try {
-        const url = joinUrl(ABS_API_BASE, path);     
+        const url = joinUrl(ABS_API_BASE, path);
         const resp = await requestWithLog(url, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          bodyObj: payload,    
+          bodyObj: payload,
         });
 
         const server = (resp && (resp.json ?? resp.text)) ?? null;
 
         console.log("[HTTP] meta:", {
-          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url   
+          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url
         });
 
         console.log("[PATCH] payload (sent):", payload);
@@ -3540,7 +3647,7 @@ export default function BookDetailsPage() {
       if (!resp.ok) throw new Error(`[${resp.status}] ${text || "Upload failed"}`);
 
       if (json && typeof json === "object") {
-        setBook((prev) => ({ ...(prev || {}), ...json })); 
+        setBook((prev) => ({ ...(prev || {}), ...json }));
       }
 
       alert("Cover saved ✅");
@@ -3930,12 +4037,12 @@ export default function BookDetailsPage() {
 
 
 function createWatermarkedBackgroundSVG({
-  imageUrl,            
+  imageUrl,
   text = "TBM+",
   opacity = 0.12,
-  gap = 220,             
-  size = 56,              
-  angle = -30,           
+  gap = 220,
+  size = 56,
+  angle = -30,
   fontFamily = "Inter,system-ui,Arial",
 }) {
   const W = 2480, H = 3508;
