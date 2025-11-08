@@ -9,14 +9,11 @@ import pageThemes from "./pageThemes.json";
 import TextFormat, { markdownToHtml } from "@/components/format/TextFormat";
 import toast from "react-hot-toast";
 const API_BASE = "https://tbmplus-backend.ultimeet.io";
-const { width: CONTENT_W, height: CONTENT_H } = measureA4ContentBox();
 
-function readCookie(name) {
-  if (typeof document === "undefined") return null;
-  const pattern = new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1") + '=([^;]*)');
-  const match = document.cookie.match(pattern);
-  return match ? decodeURIComponent(match[1]) : null;
-}
+const DOC_FONT = 12;
+const DOC_LINE_HEIGHT = 1;
+
+
 function ImageMagnifierOverlay({
   src,
   onClose,
@@ -633,42 +630,34 @@ function readMeta(html) {
 }
 
 function measureA4ContentBox() {
+  const FOOTER_SAFETY_GAP = 20;
   if (typeof window === 'undefined' || typeof document === 'undefined') {
-    // safe defaults for SSR
-    return { width: 770, height: 980 };
+    return { width: 770, height: 980 - FOOTER_SAFETY_GAP };
   }
   const page = document.querySelector('.doc-sheet');
-  if (!page) return { width: 770, height: 940 };
+  if (!page) return { width: 770, height: 940 - FOOTER_SAFETY_GAP };
 
-  // header (top strip + header HTML) = first child container
-  const headerWrap = page.firstElementChild;                       // your top wrapper
-  // editable body is the middle container with data-editable
+  const headerWrap = page.firstElementChild;
   const body = page.querySelector('[data-editable]');
-  // footer = last child container
   const footerWrap = page.lastElementChild;
 
-  // outer page size (should be 794×1123 if you locked A4)
   const pageRect = page.getBoundingClientRect();
 
-  // header/footer heights (include any accent bars inside)
   const headerH = headerWrap ? headerWrap.getBoundingClientRect().height : 0;
   const footerH = footerWrap ? footerWrap.getBoundingClientRect().height : 0;
 
-  // borders eat 2px total on your page; body has 18px top/bottom & 12px left/right padding
-  const pageBorder = 2; // 1px top+bottom
+  const pageBorder = 2;
   const style = body ? getComputedStyle(body) : null;
   const padL = style ? parseFloat(style.paddingLeft) : 12;
   const padR = style ? parseFloat(style.paddingRight) : 12;
 
-  // usable content width = body clientWidth (safest)
   const contentWidth = body ? Math.floor(body.clientWidth)
     : Math.floor(pageRect.width - pageBorder - padL - padR);
 
-  // usable content height = page - header - footer
-  // (clientHeight gives inner height, but pageRect.height is fine since header/footer are siblings)
+
   const contentHeight = Math.max(
     0,
-    Math.floor(pageRect.height - headerH - footerH)
+    Math.floor(pageRect.height - headerH - footerH - FOOTER_SAFETY_GAP)
   );
 
   return { width: contentWidth, height: contentHeight };
@@ -927,6 +916,252 @@ function paginateHTMLIntoA4(html, {
   try { document.body.removeChild(root); } catch { }
   return pages;
 }
+const WORDS_PER_PAGE = 200;
+const USE_WORD_PAGINATION = true;
+function splitIntoWordPages(html = "", wordsPerPage = WORDS_PER_PAGE) {
+
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    const text = String(html || "").replace(/<[^>]+>/g, " ");
+    const words = (text.match(/\S+/g) || []);
+    const chunks = [];
+    for (let i = 0; i < words.length; i += wordsPerPage) {
+      const slice = words.slice(i, i + wordsPerPage).join(" ");
+      chunks.push(`<div>${slice}</div>`);
+    }
+    return chunks.length ? chunks : ["<div></div>"];
+  }
+  const root = document.createElement("div");
+  root.innerHTML = String(html || "");
+
+  const pages = [];
+  let wordsLeft = wordsPerPage;
+
+  const isSkippable = (n) =>
+    n.nodeType === 8 ||
+    (n.nodeType === 1 && /^(script|style)$/i.test(n.tagName));
+
+  const wordCountOfText = (s) => (String(s || "").trim().match(/\S+/g) || []).length;
+
+  function splitTextToBudget(text, budget) {
+    const words = String(text || "").match(/\S+|\s+/g) || [];
+    let used = 0, i = 0;
+    for (; i < words.length; i++) {
+      if (!/\S/.test(words[i])) continue;
+      if (used + 1 > budget) break;
+      used += 1;
+    }
+    const head = words.slice(0, i).join("");
+    const tail = words.slice(i).join("");
+    return { head, tail };
+  }
+
+  // clone node shallow with attributes/styles intact
+  function cloneShallow(node) {
+    if (node.nodeType === 3) return document.createTextNode(node.textContent);
+    const c = node.cloneNode(false);
+    return c;
+  }
+
+  // append nodeClone to target
+  function append(target, n) { target.appendChild(n); }
+
+  // recursive packer: tries to pack "node" into "bucket" with current budget
+  // returns leftover node (for next page) or null
+  function pack(node, bucket) {
+    if (isSkippable(node)) return null;
+
+    if (node.nodeType === 3) {
+      const txt = node.textContent || "";
+      const wc = wordCountOfText(txt);
+
+      if (wc <= wordsLeft) {
+        append(bucket, document.createTextNode(txt));
+        wordsLeft -= wc;
+        return null;
+      }
+      // need to split text across pages
+      if (wordsLeft > 0) {
+        const { head, tail } = splitTextToBudget(txt, wordsLeft);
+        if (head) append(bucket, document.createTextNode(head));
+        wordsLeft = 0;
+        // leftover text node goes to next page
+        return document.createTextNode(tail);
+      }
+      // no budget at all → full text goes to next page
+      return document.createTextNode(txt);
+    }
+
+    if (node.nodeType === 1) {
+      // treat <img> (and media) atomically: don't count as words but keep together
+      if (/^(img|svg|video|canvas|figure|iframe)$/i.test(node.tagName)) {
+        if (bucket.childNodes.length === 0 || wordsLeft > 0) {
+          append(bucket, node.cloneNode(true));
+          return null;
+        } else {
+          return node.cloneNode(true);
+        }
+      }
+
+      const shell = cloneShallow(node);
+      append(bucket, shell);
+
+      for (let i = 0; i < node.childNodes.length; i++) {
+        const child = node.childNodes[i];
+        const leftover = pack(child, shell);
+        if (leftover) {
+          // we filled the page; make a wrapper for leftover under same parent
+          const leftoverShell = cloneShallow(node);
+          leftoverShell.appendChild(leftover);
+          // also carry over remaining siblings to leftoverShell
+          for (let j = i + 1; j < node.childNodes.length; j++) {
+            leftoverShell.appendChild(node.childNodes[j].cloneNode(true));
+          }
+          return leftoverShell;
+        }
+      }
+      return null;
+    }
+
+    // other node types: just clone
+    append(bucket, node.cloneNode(true));
+    return null;
+  }
+
+  // walk root children and fill pages
+  let scratch = document.createElement("div");
+  // move children to a queue to preserve order
+  const queue = Array.from(root.childNodes);
+
+  while (queue.length) {
+    const page = document.createElement("div"); // this will be inner .tbm-body content
+    wordsLeft = wordsPerPage;
+
+    // fill page until budget ends
+    while (queue.length && wordsLeft >= 0) {
+      const node = queue.shift();
+      const leftover = pack(node, page);
+      if (leftover) {
+        // page full → push leftover to queue head for next page
+        queue.unshift(leftover);
+        break;
+      }
+    }
+
+    pages.push(page.innerHTML || "<div></div>");
+  }
+
+  return pages;
+}
+function measureNeededHeight(html, { width, baseFont = 16, lineHeight = 1.7 } = {}) {
+  if (typeof document === "undefined") return 0;
+  const host = document.createElement("div");
+  host.style.cssText = `
+    position:fixed; left:-99999px; top:0;
+    width:${width}px; box-sizing:border-box;
+    font-size:${baseFont}px; line-height:${lineHeight};
+    padding:0; margin:0; visibility:hidden;
+  `;
+  host.innerHTML = `<div>${html}</div>`;
+  document.body.appendChild(host);
+  const need = host.firstElementChild.scrollHeight;
+  document.body.removeChild(host);
+  return need;
+}
+
+function willOverflow(html, { width, maxHeight, baseFont = DOC_FONT, lineHeight = DOC_LINE_HEIGHT }) {
+  if (typeof document === "undefined") return false;
+  const need = measureNeededHeight(html, { width, baseFont, lineHeight });
+  return need > maxHeight;
+}
+function autoFitHtmlToHeight(html, {
+  width,
+  maxHeight,
+  baseFont = DOC_FONT,
+  lineHeight = DOC_LINE_HEIGHT,
+  minScale = 0.85,
+  minFont = 12,
+} = {}) {
+  if (typeof document === "undefined") return html; // SSR guard
+
+  const host = document.createElement("div");
+  host.style.cssText = `
+    position:fixed; left:-99999px; top:0;
+    width:${width}px; box-sizing:border-box;
+    font-size:${baseFont}px; line-height:${lineHeight};
+    padding:0; margin:0; visibility:hidden;
+  `;
+  host.innerHTML = `<div class="__fit_inner">${html}</div>`;
+  document.body.appendChild(host);
+
+  const inner = host.firstElementChild;
+  let need = inner.scrollHeight;
+
+  let scale = Math.min(1, maxHeight / Math.max(1, need));
+  if (scale >= minScale) {
+    const out = `
+      <div style="height:${maxHeight}px; overflow:hidden; position:relative;">
+        <div style="transform:scale(${scale});
+                    transform-origin: top left;
+                    width:${width}px;
+                    font-size:${baseFont}px; line-height:${lineHeight};">
+          ${html}
+        </div>
+      </div>`;
+    document.body.removeChild(host);
+    return out;
+  }
+
+  let low = minFont, high = baseFont, best = baseFont;
+  for (let iter = 0; iter < 8; iter++) {
+    const mid = Math.floor((low + high) / 2);
+    host.style.fontSize = `${mid}px`;
+    need = inner.scrollHeight;
+
+    if (need <= maxHeight) {
+      best = mid;
+      high = mid - 1;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  // final check
+  host.style.fontSize = `${best}px`;
+  need = inner.scrollHeight;
+
+  // Return reflowed HTML with final font size applied
+  const finalHtml = `
+    <div style="font-size:${best}px; line-height:${lineHeight};">
+      ${html}
+    </div>
+  `;
+
+  document.body.removeChild(host);
+  // If abhi bhi thoda overflow ho, last resort small scale
+  if (typeof document !== "undefined") {
+    // Quick measure again to get exact height for last-micro scale
+    const probe = document.createElement("div");
+    probe.style.cssText = `
+      position:fixed; left:-99999px; top:0; width:${width}px; visibility:hidden;
+    `;
+    probe.innerHTML = finalHtml;
+    document.body.appendChild(probe);
+    const h = probe.scrollHeight;
+    document.body.removeChild(probe);
+
+    if (h > maxHeight) {
+      const s = Math.min(1, maxHeight / h);
+      return `
+        <div style="height:${maxHeight}px; overflow:hidden; position:relative;">
+          <div style="transform:scale(${s}); transform-origin: top left; width:${width}px;">
+            ${finalHtml}
+          </div>
+        </div>
+      `;
+    }
+  }
+  return finalHtml;
+}
 
 
 function bookToPagesWithTheme(book, theme) {
@@ -950,55 +1185,90 @@ function bookToPagesWithTheme(book, theme) {
   const badgeBg = hasBgImg ? "transparent" : (accent || text);
   const badgeTxt = hasBgImg ? text : "#fff";
 
-  const PAGE_W = 2480, PAGE_H = 3508;     // A4 @ ~300dpi
-  const SCALE = PAGE_W / 794;            // ≈ 3.125
+  const PAGE_W = 260;
+  const SCALE = PAGE_W / 794;
   const px = (n) => Math.round(n * SCALE)
 
   const getContentBox = () => {
     try {
-      const { width, height } = measureA4ContentBox(); // tumhari fn niche already hai
-      // Optional: BOTTOM_GAP ko bhi minus karna ho to yahan adjust kar sakte ho
-      return { width: Math.max(600, width || 770), height: Math.max(600, height || 940) };
+      const { width, height } = measureA4ContentBox();
+      const TARGET_CONTENT_WIDTH = 650; 
+      const finalWidth = Math.min(TARGET_CONTENT_WIDTH, Math.max(600, width || 770));
+      return { width: finalWidth, height: Math.max(600, height || 940) };
     } catch {
-      return { width: 770, height: 940 }; // safe fallback
+      return { width: 680, height: 940 };
     }
   };
 
 
- function wrapPage(bodyHtml, ctx = {}) {
+  function wrapPage(bodyHtml, ctx = {}) {
+    const { width, height } = getContentBox();
+    const fitted = autoFitHtmlToHeight(bodyHtml, {
+      width,
+      maxHeight: height,
+      baseFont: DOC_FONT,
+      lineHeight: DOC_LINE_HEIGHT,
+      minScale: 0.85,
+      minFont: 12,
+    });
+
     const metaProbe = `
-      <span style="display:none"
-        data-unit="${_escapeHtml(ctx.unit || "")}"
-        data-class="${_escapeHtml(className)}"
-        data-title="${_escapeHtml(ctx.title || "")}">
-      </span>
-    `;
+    <span style="display:none"
+      data-unit="${_escapeHtml(ctx.unit || "")}"
+      data-class="${_escapeHtml(className)}"
+      data-title="${_escapeHtml(ctx.title || "")}">
+    </span>
+  `;
+
     const full = `
-      <div class="tbm-page" style="position:relative;background-color:${page_bg};color:${text};margin:0;padding:0">
-        <div class="tbm-body" style="padding:16px 18px;line-height:normal;font-size:inherit">
-          ${metaProbe}
-          ${bodyHtml}
-        </div>
+    <div class="tbm-page" style="position:relative;background-color:${page_bg};color:${text};margin:0;padding:0">
+      <div class="tbm-body" style="padding:16px 18px;line-height:normal;font-size:inherit">
+        ${metaProbe}
+        ${fitted}
       </div>
-    `.trim();
+    </div>
+  `.trim();
     tempPages.push(full);
   }
 
-  // ✅ auto-paginate: body ko chunks me tod do (sirf body, header/footer ko mat छेड़ो)
+
   function wrapAuto(rawBodyHtml, ctx = {}) {
     const { width, height } = getContentBox();
-    const chunks = paginateHTMLIntoA4(rawBodyHtml, {
-      width,
-      maxHeight: height,
-      fontSize: 16,
-      lineHeight: 1.7,
-    });
-    if (!chunks.length) {
-      wrapPage(`<div></div>`, ctx);
+
+    if (USE_WORD_PAGINATION) {
+      const chunks = splitIntoWordPages(rawBodyHtml, WORDS_PER_PAGE);
+      if (!chunks.length) { wrapPage("<div></div>", ctx); return; }
+
+      chunks.forEach((chunkHtml) => {
+        const overflow = willOverflow(chunkHtml, {
+          width,
+          maxHeight: height,
+          baseFont: DOC_FONT,
+          lineHeight: DOC_LINE_HEIGHT,
+        });
+
+        if (!overflow) {
+          wrapPage(chunkHtml, ctx);
+          return;
+        }
+
+
+
+      });
+
       return;
     }
+
+    const chunks = paginateHTMLIntoA4(rawBodyHtml, {
+      width,
+      maxHeight: Math.max(0, height - 20),
+      fontSize: DOC_FONT,
+      lineHeight: DOC_LINE_HEIGHT,
+    });
+    if (!chunks.length) { wrapPage("<div></div>", ctx); return; }
     chunks.forEach((chunk) => wrapPage(chunk, ctx));
   }
+
 
 
 
@@ -1282,7 +1552,7 @@ function bookToPagesWithTheme(book, theme) {
           const body = `${titleTop}
         <div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
 
-       wrapAuto(body, { unit: uTitle, title: lTitle });
+          wrapAuto(body, { unit: uTitle, title: lTitle });
         }
       } else {
         const body = `
@@ -1290,7 +1560,7 @@ function bookToPagesWithTheme(book, theme) {
       <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
       <div style="color:${text}"><em>No content available yet.</em></div>`;
 
-      wrapAuto(body, { unit: uTitle, title: lTitle });
+        wrapAuto(body, { unit: uTitle, title: lTitle });
       }
     }
 
@@ -2884,7 +3154,7 @@ function DocView({
   const FOOTER_BAR = showFooter ? px(40) : 0;
   const CONTENT_VPAD = px(18) * 2;
   const CONTENT_HPAD = px(12) * 2;
-  const BOTTOM_GAP = px(20);
+  const BOTTOM_GAP = px(0);
   const INNER_W = PAGE_W - CONTENT_HPAD;
   const INNER_H = PAGE_H - (HEADER_STRIPS + FOOTER_STRIPS + HEADER_BAR + FOOTER_BAR + CONTENT_VPAD + BOTTOM_GAP);
 
@@ -3257,7 +3527,6 @@ export default function BookDetailsPage() {
   function freezeForExport() { document.body.classList.add("tbm-printing", "tbm-exporting"); try { window.scrollTo({ top: 0, behavior: "instant" }); } catch { } }
   function unfreezeAfterExport() { document.body.classList.remove("tbm-printing", "tbm-exporting"); }
 
-  async function waitForFonts() { try { if (document?.fonts?.ready) await document.fonts.ready; } catch { } }
   async function waitForImages(root) {
     const imgs = Array.from(root.querySelectorAll("img"));
     await Promise.all(imgs.map(img =>
@@ -3641,6 +3910,35 @@ export default function BookDetailsPage() {
     setCoverFile(file);
   }, []);
 
+
+
+
+
+  function _extractBody(html = "") {
+    const m = /<div\s+class=["']tbm-body["'][^>]*>([\s\S]*?)<\/div>/i.exec(String(html));
+    return m ? m[1] : "";
+  }
+
+  function _replaceBody(html = "", newInner = "") {
+    return String(html).replace(
+      /(<div\s+class=["']tbm-body["'][^>]*>)[\s\S]*?(<\/div>)/i,
+      (_, open, close) => `${open}${newInner}${close}`
+    );
+  }
+
+  function splitPageHTMLByHeight(pageHtml, { width, height, fontSize = 16, lineHeight = 1.7 }) {
+    const bodyInner = _extractBody(pageHtml);
+    const chunks = paginateHTMLIntoA4(bodyInner, {
+      width,
+      maxHeight: height,
+      fontSize: DOC_FONT,
+      lineHeight: DOC_LINE_HEIGHT,
+    });
+    if (!Array.isArray(chunks) || chunks.length <= 1) return [pageHtml];
+    return chunks.map(chunk => _replaceBody(pageHtml, chunk));
+  }
+
+
   const handlePickImageUrl = React.useCallback((url) => {
     setTopImageUrl((prev) => {
       if (prev && prev.startsWith("blob:")) {
@@ -3652,11 +3950,83 @@ export default function BookDetailsPage() {
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   }, []);
 
-  const pages = React.useMemo(
+  const rawPages = React.useMemo(
     () => bookToPagesWithTheme(book, effectiveTheme),
     [book, effectiveTheme]
   );
 
+  const pages = React.useMemo(() => {
+    // A4 usable content box (header/footer हटाकर real body height)
+    const { width, height } = measureA4ContentBox();  // typically ~770 x ~940
+    const out = [];
+    for (const p of (rawPages || [])) {
+      const parts = splitPageHTMLByHeight(p, { width, height, fontSize: 16, lineHeight: 1.7 });
+      out.push(...parts);
+    }
+    return out;
+  }, [rawPages]);
+
+
+
+  // ⬇️ helper: page ke .tbm-body ka innerHTML nikaalo
+  function extractBodyHTML(pageHtml = "") {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = String(pageHtml || "");
+    const el = tmp.querySelector(".tbm-body");
+    return el ? el.innerHTML : String(pageHtml || "");
+  }
+
+  // ⬇️ helper: plain text (tags hata ke)
+  function toPlainText(html = "") {
+    return String(html || "")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // ⬇️ pages change hote hi console me print
+  React.useEffect(() => {
+    if (!Array.isArray(pages) || !pages.length) return;
+
+    console.groupCollapsed(`[TBM] Pages ready • total=${pages.length}`);
+
+    pages.forEach((html, idx) => {
+      // meta (tumhare readMeta already present hai upar)
+      const meta = readMeta ? readMeta(html) : {};
+      const unit = meta?.unit || "";
+      const title = meta?.title || "";
+
+      // body HTML + plain text
+      const bodyHTML = extractBodyHTML(html);
+      const bodyTEXT = toPlainText(bodyHTML);
+
+      console.groupCollapsed(
+        `Page ${idx + 1}/${pages.length}` +
+        (unit ? ` • unit: ${unit}` : "") +
+        (title ? ` • title: ${title}` : "")
+      );
+      console.log("HTML:", bodyHTML);    // pura body HTML
+      console.log("TEXT:", bodyTEXT);    // plain text (agar chaho to substring bhi le sakte ho)
+      console.groupEnd();
+    });
+
+    // quick overview table
+    const rows = pages.map((html, idx) => {
+      const meta = readMeta ? readMeta(html) : {};
+      const body = extractBodyHTML(html);
+      return {
+        page: idx + 1,
+        unit: meta?.unit || "",
+        title: meta?.title || "",
+        chars: toPlainText(body).length
+      };
+    });
+    console.table(rows);
+
+    console.groupEnd();
+  }, [pages]);
 
 
   React.useEffect(() => {
@@ -4676,7 +5046,7 @@ export default function BookDetailsPage() {
           >
             <DocView
               pages={pages}
-              fontSize={16}
+              fontSize={DOC_FONT}
               deviceDimensions={{ width: 720, height: 520 }}
               theme={effectiveTheme}
               onPageInView={setCurrentPage}
