@@ -6,6 +6,7 @@ import axios from 'axios';
 import BookGrid from '@/components/book/BookGrid';
 
 const API = 'https://tbmplus-backend.ultimeet.io/api/books/';
+const COVER_BASE = 'https://tbmplus-backend.ultimeet.io'; // base for relative cover paths
 
 export default function BooksLibraryPage() {
   const router = useRouter();
@@ -16,7 +17,6 @@ export default function BooksLibraryPage() {
     (async () => {
       try {
         setLoading(true);
-        // API returns { success: true, data: [...] }
         const { data } = await axios.get(API, { withCredentials: true });
 
         const statusMap = (s = '') => {
@@ -38,6 +38,7 @@ export default function BooksLibraryPage() {
           author: b.author_name || '',
           status: statusMap(b.status),
           createdAt: b.created_at,
+          updated_at: b.updated_at,
           lastModified: b.updated_at,
           chapters: chaptersFromUnits(b.syllabus?.syllabus_json?.units),
           educational_level: b.educational_level,
@@ -45,6 +46,10 @@ export default function BooksLibraryPage() {
           target_group: b.target_group,
           description: b.description,
           category: b.category,
+          language: b.language,
+          teaching_style: b.teaching_style,
+          // 👇 build absolute cover url if present
+          cover_url: b.cover_page ? `${COVER_BASE}${b.cover_page}` : null,
         });
 
         const list = Array.isArray(data?.data) ? data.data.map(toUi) : [];

@@ -9,6 +9,7 @@ import pageThemes from "./pageThemes.json";
 import TextFormat, { markdownToHtml } from "@/components/format/TextFormat";
 import toast from "react-hot-toast";
 const API_BASE = "https://tbmplus-backend.ultimeet.io";
+const { width: CONTENT_W, height: CONTENT_H } = measureA4ContentBox();
 
 function readCookie(name) {
   if (typeof document === "undefined") return null;
@@ -631,6 +632,302 @@ function readMeta(html) {
   return { unit, title, className: klass };
 }
 
+function measureA4ContentBox() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    // safe defaults for SSR
+    return { width: 770, height: 980 };
+  }
+  const page = document.querySelector('.doc-sheet');
+  if (!page) return { width: 770, height: 940 };
+
+  // header (top strip + header HTML) = first child container
+  const headerWrap = page.firstElementChild;                       // your top wrapper
+  // editable body is the middle container with data-editable
+  const body = page.querySelector('[data-editable]');
+  // footer = last child container
+  const footerWrap = page.lastElementChild;
+
+  // outer page size (should be 794×1123 if you locked A4)
+  const pageRect = page.getBoundingClientRect();
+
+  // header/footer heights (include any accent bars inside)
+  const headerH = headerWrap ? headerWrap.getBoundingClientRect().height : 0;
+  const footerH = footerWrap ? footerWrap.getBoundingClientRect().height : 0;
+
+  // borders eat 2px total on your page; body has 18px top/bottom & 12px left/right padding
+  const pageBorder = 2; // 1px top+bottom
+  const style = body ? getComputedStyle(body) : null;
+  const padL = style ? parseFloat(style.paddingLeft) : 12;
+  const padR = style ? parseFloat(style.paddingRight) : 12;
+
+  // usable content width = body clientWidth (safest)
+  const contentWidth = body ? Math.floor(body.clientWidth)
+    : Math.floor(pageRect.width - pageBorder - padL - padR);
+
+  // usable content height = page - header - footer
+  // (clientHeight gives inner height, but pageRect.height is fine since header/footer are siblings)
+  const contentHeight = Math.max(
+    0,
+    Math.floor(pageRect.height - headerH - footerH)
+  );
+
+  return { width: contentWidth, height: contentHeight };
+}
+
+function paginateHTMLIntoA4(html, {
+  width = 700,          // content width in px (match your page inner width)
+  maxHeight = 940,      // usable content height (exclude header/footer strips)
+  fontSize = 16,        // baseline font, helps layout match
+  lineHeight = 1.7,
+} = {}) {
+  // 1) Make hidden sandbox root
+  const root = document.createElement("div");
+  Object.assign(root.style, {
+    position: "fixed",
+    left: "-99999px",
+    top: "0",
+    width: `${width}px`,
+    maxHeight: `${maxHeight}px`,
+    boxSizing: "border-box",
+    padding: "0",
+    fontSize: `${fontSize}px`,
+    lineHeight: String(lineHeight),
+    wordBreak: "break-word",
+    whiteSpace: "normal",
+    overflow: "hidden",
+    background: "#fff",
+  });
+  document.body.appendChild(root);
+
+  // parse HTML into a working fragment
+  const scratch = document.createElement("div");
+  scratch.innerHTML = html;
+
+  const pages = [];
+  let page = document.createElement("div");
+  page.style.minHeight = `${maxHeight}px`;
+  root.innerHTML = ""; // ensure empty
+  root.appendChild(page);
+
+  // helpers
+  const fits = () => page.scrollHeight <= maxHeight;
+
+  const cloneShallow = (node) => {
+    const c = node.cloneNode(false);
+    if (node.nodeType === 1) c.style.cssText = node.style?.cssText || "";
+    return c;
+  };
+
+  const splitTextToFit = (textNode) => {
+    const full = textNode.textContent || "";
+    let lo = 0, hi = full.length, ok = 0;
+
+    // binary search largest prefix that fits
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      textNode.textContent = full.slice(0, mid);
+      if (fits()) { ok = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+
+    const head = full.slice(0, ok);
+    const tail = full.slice(ok);
+    textNode.textContent = head;
+    return tail;
+  };
+
+  const ensureImgFits = (img) => {
+    // lock to container width first
+    img.style.maxWidth = "100%";
+    img.style.height = "auto";
+
+    const r = img.getBoundingClientRect();
+    // If image still exceeds the page content height, scale it down by height
+    if (r.height > maxHeight) {
+      const natW = img.naturalWidth || r.width || 1;
+      const natH = img.naturalHeight || r.height || 1;
+      const ratio = natW / natH;
+
+      const targetH = Math.min(maxHeight - 8, natH);
+      const targetW = Math.round(targetH * ratio);
+
+      img.style.height = `${targetH}px`;
+      img.style.width = `${Math.min(targetW, width)}px`; // respect content width
+      img.style.objectFit = "contain";
+    }
+  };
+
+  const breakBeforeTags = new Set(["H1", "H2", "H3", "H4", "H5", "H6", "TABLE", "HR"]);
+
+  // core: add a node, splitting if needed
+  const addNode = (node) => {
+    if (node.nodeType === 3) {
+      // text node
+      const t = document.createTextNode(node.textContent || "");
+      page.appendChild(t);
+      if (fits()) return null;
+      // split text
+      const remainder = splitTextToFit(t);
+      if (remainder && remainder.trim()) {
+        return document.createTextNode(remainder);
+      }
+      return null;
+    }
+
+    if (node.nodeType !== 1) return null; // skip others
+
+    // if heading/table: optional soft page break before, if current is not empty and near end
+    if (breakBeforeTags.has(node.tagName) && page.childNodes.length > 0) {
+      if (!fits()) newPage();
+      // if it still doesn't fit, we'll handle below
+    }
+
+    // try whole node first
+    const test = node.cloneNode(true);
+    // image fit adjustment (only for single <img>)
+    if (test.tagName === "IMG") {
+      page.appendChild(test);
+      ensureImgFits(test);
+      if (!fits()) { // even after scale, push to new page
+        page.removeChild(test);
+        newPage();
+        page.appendChild(test);
+        ensureImgFits(test);
+      }
+      return null;
+    }
+
+    page.appendChild(test);
+    if (fits()) return null;
+
+    // too big → remove and split recursively
+    page.removeChild(test);
+    const shell = cloneShallow(node);
+    page.appendChild(shell);
+
+    for (let i = 0; i < node.childNodes.length; i++) {
+      const child = node.childNodes[i].cloneNode(true);
+
+      // try the child as a whole
+      shell.appendChild(child);
+      if (fits()) continue;
+
+      // remove child, and append piecewise
+      shell.removeChild(child);
+
+      if (child.nodeType === 3) {
+        // split text
+        const t = document.createTextNode(child.textContent || "");
+        shell.appendChild(t);
+        const rem = splitTextToFit(t);
+        if (rem && rem.trim()) {
+          // carry remainder to next page inside same block shell
+          child.textContent = rem;
+          // start a new page with a fresh shell and continue
+          const carry = cloneShallow(node);
+          newPage();
+          page.appendChild(carry);
+          // put the leftover text first
+          const t2 = document.createTextNode(rem);
+          carry.appendChild(t2);
+        }
+      } else if (child.nodeType === 1) {
+        // element: descend
+        const leftover = splitElement(child, shell);
+        if (leftover) {
+          newPage();
+          const shell2 = cloneShallow(node);
+          page.appendChild(shell2);
+          shell2.appendChild(leftover);
+        }
+      }
+    }
+    return null;
+  };
+
+  const splitElement = (elem, targetParent) => {
+    // returns leftover node for next page (or null)
+    const holder = cloneShallow(elem);
+    targetParent.appendChild(holder);
+
+    // special-case images inside
+    if (elem.tagName === "IMG") {
+      holder.appendChild(elem.cloneNode(true));
+      ensureImgFits(holder.firstChild);
+      if (!fits()) {
+        targetParent.removeChild(holder);
+        return elem.cloneNode(true); // move entirely to next page
+      }
+      return null;
+    }
+
+    for (let i = 0; i < elem.childNodes.length; i++) {
+      const child = elem.childNodes[i].cloneNode(true);
+      holder.appendChild(child);
+
+      if (fits()) continue;
+
+      // overflow → remove child and split it
+      holder.removeChild(child);
+
+      if (child.nodeType === 3) {
+        const t = document.createTextNode(child.textContent || "");
+        holder.appendChild(t);
+        const rem = splitTextToFit(t);
+        if (rem && rem.trim()) {
+          // leftover element with remaining text
+          const leftover = cloneShallow(elem);
+          const t2 = document.createTextNode(rem);
+          leftover.appendChild(t2);
+          return leftover;
+        }
+      } else if (child.nodeType === 1) {
+        const leftoverChild = splitElement(child, holder);
+        if (leftoverChild) {
+          const leftover = cloneShallow(elem);
+          leftover.appendChild(leftoverChild);
+          return leftover;
+        }
+      }
+    }
+    return null;
+  };
+
+  const newPage = () => {
+    // finalize current page
+    const htmlOut = page.innerHTML;
+    pages.push(`<div class="tbm-body">${htmlOut}</div>`);
+    // start fresh
+    page = document.createElement("div");
+    page.style.minHeight = `${maxHeight}px`;
+    root.innerHTML = "";
+    root.appendChild(page);
+  };
+
+  // Stream children of the source block
+  while (scratch.firstChild) {
+    const node = scratch.firstChild;
+    scratch.removeChild(node);
+    const leftover = addNode(node);
+    if (leftover) {
+      // current page is full; close it and start next
+      newPage();
+      // push leftover into scratch to continue processing
+      scratch.insertBefore(leftover, scratch.firstChild);
+    } else {
+      if (!fits()) {
+        newPage();
+      }
+    }
+  }
+
+  // flush last page
+  if (page.childNodes.length) newPage();
+
+  // cleanup
+  try { document.body.removeChild(root); } catch { }
+  return pages;
+}
+
 
 function bookToPagesWithTheme(book, theme) {
   const tempPages = [];
@@ -652,6 +949,56 @@ function bookToPagesWithTheme(book, theme) {
   const chipShadow = hasBgImg ? "none" : "0 2px 8px rgba(0,0,0,.03)";
   const badgeBg = hasBgImg ? "transparent" : (accent || text);
   const badgeTxt = hasBgImg ? text : "#fff";
+
+  const PAGE_W = 2480, PAGE_H = 3508;     // A4 @ ~300dpi
+  const SCALE = PAGE_W / 794;            // ≈ 3.125
+  const px = (n) => Math.round(n * SCALE)
+
+  const getContentBox = () => {
+    try {
+      const { width, height } = measureA4ContentBox(); // tumhari fn niche already hai
+      // Optional: BOTTOM_GAP ko bhi minus karna ho to yahan adjust kar sakte ho
+      return { width: Math.max(600, width || 770), height: Math.max(600, height || 940) };
+    } catch {
+      return { width: 770, height: 940 }; // safe fallback
+    }
+  };
+
+
+ function wrapPage(bodyHtml, ctx = {}) {
+    const metaProbe = `
+      <span style="display:none"
+        data-unit="${_escapeHtml(ctx.unit || "")}"
+        data-class="${_escapeHtml(className)}"
+        data-title="${_escapeHtml(ctx.title || "")}">
+      </span>
+    `;
+    const full = `
+      <div class="tbm-page" style="position:relative;background-color:${page_bg};color:${text};margin:0;padding:0">
+        <div class="tbm-body" style="padding:16px 18px;line-height:normal;font-size:inherit">
+          ${metaProbe}
+          ${bodyHtml}
+        </div>
+      </div>
+    `.trim();
+    tempPages.push(full);
+  }
+
+  // ✅ auto-paginate: body ko chunks me tod do (sirf body, header/footer ko mat छेड़ो)
+  function wrapAuto(rawBodyHtml, ctx = {}) {
+    const { width, height } = getContentBox();
+    const chunks = paginateHTMLIntoA4(rawBodyHtml, {
+      width,
+      maxHeight: height,
+      fontSize: 16,
+      lineHeight: 1.7,
+    });
+    if (!chunks.length) {
+      wrapPage(`<div></div>`, ctx);
+      return;
+    }
+    chunks.forEach((chunk) => wrapPage(chunk, ctx));
+  }
 
 
 
@@ -733,9 +1080,9 @@ function bookToPagesWithTheme(book, theme) {
           const num = `${ui + 1}.${li + 1}`;
           const title = l.title || `Lesson ${li + 1}`;
           return `
-      <span style="${chipBase}">
-  <span style="${chipNum}">${num}</span>
-  <span style="${chipTitle}">${_escapeHtml(title)}</span>
+          <span style="${chipBase}">
+          <span style="${chipNum}">${num}</span>
+             <span style="${chipTitle}">${_escapeHtml(title)}</span>
 </span>
 
       `;
@@ -836,7 +1183,7 @@ function bookToPagesWithTheme(book, theme) {
   </div>
 `;
 
-  wrap(contentsBody, { unit: "Contents" });
+  wrapAuto(contentsBody, { unit: "Contents" });
 
   units.forEach((u, ui) => {
     const uTitle = u.title || `Unit ${ui + 1}`;
@@ -913,41 +1260,40 @@ function bookToPagesWithTheme(book, theme) {
   </div>`,
     ].join("\n\n");
 
-    wrap(unitHeroBody, { unit: uTitle });
+    wrapAuto(unitHeroBody, { unit: uTitle });
 
-    (u.lessons || []).forEach((l, li) => {
+    for (let li = 0; li < (u.lessons || []).length; li++) {
+      const l = u.lessons[li];
       const lTitle = l.title || `Lesson ${li + 1}`;
       const lPages = l.number_of_pages ?? "—";
       const blocks = blocksFromLesson(l);
 
       if (blocks.length) {
-        blocks.forEach((b, bi) => {
+        for (let bi = 0; bi < blocks.length; bi++) {
+          const b = blocks[bi];
+
           const titleTop =
             bi === 0
-              ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(
-                uTitle
-              )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
-       <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
-              : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(
-                lTitle
-              )} — Page ${bi + 1}</h3>`;
+              ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
+             <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
+              : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(lTitle)} — Page ${bi + 1}</h3>`;
 
           const safeHtml = stripScripts(b);
-
           const body = `${titleTop}
-  <div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
-          wrap(body, { unit: uTitle, title: lTitle });
-        });
+        <div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
+
+       wrapAuto(body, { unit: uTitle, title: lTitle });
+        }
       } else {
         const body = `
-          <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(
-          uTitle
-        )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
-          <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
-          <div style="color:${text}"><em>No content available yet.</em></div>`;
-        wrap(body, { unit: uTitle, title: lTitle });
+      <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
+      <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
+      <div style="color:${text}"><em>No content available yet.</em></div>`;
+
+      wrapAuto(body, { unit: uTitle, title: lTitle });
       }
-    });
+    }
+
   });
 
   const total = tempPages.length;
@@ -955,6 +1301,8 @@ function bookToPagesWithTheme(book, theme) {
     html.replace(/\{\{\s*total\s*\}\}/g, String(total))
   );
 }
+
+
 /* ===========================
    Theme Panel (+ Smart Background generator)
 =========================== */
@@ -1937,7 +2285,6 @@ function EditorPanel({ onClose }) {
 
   function cmd(command, value = null) {
     try {
-      // 1) Restore last saved selection if available
       const sel = window.getSelection && window.getSelection();
       if (sel) {
         sel.removeAllRanges();
@@ -1948,17 +2295,14 @@ function EditorPanel({ onClose }) {
         }
       }
 
-      // 2) Freeze current scroll position
       const prevY = window.scrollY || document.documentElement.scrollTop || 0;
 
-      // 3) Exec the command
       document.execCommand(command, false, value);
 
-      // 4) Focus the *same* editable root without scrolling
       const target =
         lastEditableElRef.current ||
         document.activeElement?.closest?.('[data-editable="true"]') ||
-        document.querySelector('[data-editable="true"]'); // fallback only
+        document.querySelector('[data-editable="true"]');
 
       if (target && target.focus) {
         try {
@@ -1968,12 +2312,10 @@ function EditorPanel({ onClose }) {
         }
       }
 
-      // 5) Restore scroll position (belt & suspenders)
       if ((window.scrollY || document.documentElement.scrollTop || 0) !== prevY) {
         window.scrollTo({ top: prevY, left: 0, behavior: "instant" in window ? "instant" : "auto" });
       }
 
-      // 6) Save the latest selection again
       saveCurrentRangeIfEditable();
     } catch { }
   }
@@ -1999,13 +2341,11 @@ function EditorPanel({ onClose }) {
     cmd("hiliteColor", e.target.value);
   }
 
-  /** ======== S3 upload helpers (paste near the top of the file) ======== */
   const TBM_BACKEND_BASE = "https://tbmplus-backend.ultimeet.io";
   const PRESIGN_PATH = "/api/get_presigned_url/";
   const S3_PUBLIC_BASE = "https://tbm-plus.s3.amazonaws.com";
 
   function s3PublicUrlFromKey(key = "") {
-    // Keep slashes readable, escape the rest
     return `${S3_PUBLIC_BASE}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
   }
 
@@ -2013,7 +2353,6 @@ function EditorPanel({ onClose }) {
     const url = `${TBM_BACKEND_BASE}${PRESIGN_PATH}`;
     const body = {
       file_name: fileName,
-      // The API example shows "application/image"; we'll prefer the real mime if available.
       file_type: fileType || "application/image",
       operation: "upload",
       folder
@@ -2022,8 +2361,6 @@ function EditorPanel({ onClose }) {
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // add credentials: "include" if your API expects cookies/session
-      // credentials: "include",
       body: JSON.stringify(body),
     });
 
@@ -2044,7 +2381,6 @@ function EditorPanel({ onClose }) {
     const resp = await fetch(presignedUrl, {
       method: "PUT",
       headers: {
-        // S3 signed URLs are content-type sensitive; match the same type used to presign.
         "Content-Type": file.type || "application/octet-stream",
       },
       body: file,
@@ -2509,7 +2845,7 @@ function EditorPanel({ onClose }) {
 function DocView({
   pages,
   fontSize = 16,
-  deviceDimensions = { width: 720, height: 520 },
+  deviceDimensions = { width: 2480, },
   theme = null,
   onPageInView = () => { },
   editable = false,
@@ -2520,9 +2856,17 @@ function DocView({
   onSelectPage = () => { },
   bgDisabledPages = new Set(),
   collectEditedHTMLRef,
+  showFooter = true,
 }) {
-  const pageWidth = Math.min(deviceDimensions.width, 860);
-  const pageMinHeight = Math.max(deviceDimensions.height, 980);
+  const A4_W = 2480;
+  const A4_H = 3508;
+  const A4_RATIO = A4_H / A4_W;
+
+  const PAGE_W = deviceDimensions.width || A4_W;
+  const PAGE_H = Math.round(PAGE_W * A4_RATIO);
+
+  const SCALE = PAGE_W / 794;
+  const px = (n) => Math.round(n * SCALE);
   const contentRefs = React.useRef([]);
   contentRefs.current = [];
   const pageBg = theme?.page_bg ?? "#ffffff";
@@ -2533,6 +2877,17 @@ function DocView({
   const headHTML = theme?.header || "";
   const footHTML = theme?.footer || "";
   const bgImg = theme?.page_bg_image || null;
+
+  const HEADER_STRIPS = px(theme?.accent ? 4 : 0) + px(theme?.accent2 ? 4 : 0);
+  const FOOTER_STRIPS = showFooter ? (px(theme?.accent ? 4 : 0) + px(theme?.accent2 ? 4 : 0)) : 0;
+  const HEADER_BAR = px(40);
+  const FOOTER_BAR = showFooter ? px(40) : 0;
+  const CONTENT_VPAD = px(18) * 2;
+  const CONTENT_HPAD = px(12) * 2;
+  const BOTTOM_GAP = px(20);
+  const INNER_W = PAGE_W - CONTENT_HPAD;
+  const INNER_H = PAGE_H - (HEADER_STRIPS + FOOTER_STRIPS + HEADER_BAR + FOOTER_BAR + CONTENT_VPAD + BOTTOM_GAP);
+
   function getMetaFromPage(html, key) {
     const m = new RegExp(`data-${key}="([^"]*)"`, "i").exec(String(html || ""));
     return m && m[1] ? m[1] : "";
@@ -2563,18 +2918,9 @@ function DocView({
     dirtyHandlersRef.current.delete(el);
   }
 
-  function resetPageFromSource(idx) {
-    const el = contentRefs.current[idx];
-    if (!el) return;
-    dirtyRef.current.delete(idx);
-    hydratedOnceRef.current.delete(idx);
-    const nextHtml = markdownToHtml(pages[idx] || "");
-    if (el.innerHTML !== nextHtml) el.innerHTML = nextHtml;
-    hydratedOnceRef.current.add(idx);
-  }
+
   React.useEffect(() => {
     if (!pages?.length) return;
-    // While editing, freeze auto page-detection to avoid scroll jumps.
     const opts = { root: null, rootMargin: "0px 0px -50% 0px", threshold: [0.33, 0.66, 1] };
     const io = new IntersectionObserver((entries) => {
       if (editable) return; // <-- key guard
@@ -2658,14 +3004,19 @@ function DocView({
 
       {bgImg ? (
         <style>{`
-        .doc-sheet .tbm-page { background-color: transparent !important; }
-        .doc-sheet .tbm-body { background-color: transparent !important; }
-      `}</style>
+          .doc-sheet .tbm-page { background-color: transparent !important; }
+          .doc-sheet .tbm-body img {
+    width: 100%;
+    height: 480px;
+    object-fit: cover; /* ya 'contain' as per need */
+  }
+
+        `}</style>
       ) : null}
       {imageUrl ? (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
           <div style={{
-            width: pageWidth,
+            width: PAGE_W,
             aspectRatio: "210 / 297",
             border: "1px solid #e5e7eb",
             borderRadius: 12,
@@ -2702,8 +3053,9 @@ function DocView({
             data-page={i + 1}
             ref={(el) => (pageRefs.current[i] = el)}
             style={{
-              width: pageWidth,
-              minHeight: pageMinHeight,
+              width: PAGE_W,
+              height: PAGE_H,
+              boxSizing: "border-box",
               backgroundColor: (theme?.page_bg_image ? "transparent" : pageBg),
               outline: editable && selectedPage === i + 1 ? "2px solid #2563eb" : "none",
               outlineOffset: 0,
@@ -2783,7 +3135,8 @@ function DocView({
               contentEditable={editable}
               suppressContentEditableWarning
               style={{
-                flex: 1,
+                height: INNER_H,        // ⬅️ exactly the usable height
+                overflow: "hidden",
                 padding: "18px 12px",
                 fontSize,
                 lineHeight: 1.7,
@@ -2809,77 +3162,59 @@ function DocView({
               {!editable ? <TextFormat data={page} /> : null}
             </div>
 
-
-            <div style={{ display: "flex", flexDirection: "column", backgroundColor: pageBg }}>
-              {footHTML ? (
-                <div
-                  style={{ overflow: "hidden", lineHeight: 0 }}
-                  dangerouslySetInnerHTML={{
-                    __html: renderTemplate(footHTML, {
-                      page: i + 1,
-                      total: pages.length,
-                      unit: getMetaFromPage(page, "unit"),
-                      className: getMetaFromPage(page, "class"),
-                      date: new Date().toLocaleDateString(),
-                    }),
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "8px 14px",
-                    borderTop: "1px solid #e5e7eb",
-                    color: textCol,
-                    backgroundColor: bgImg ? "transparent" : pageBg,
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                >
-                  <span>{getMetaFromPage(page, "unit") || "—"}</span>
-                  <span>
-                    Page {i + 1} / {pages.length}
-                  </span>
-                  <span>{getMetaFromPage(page, "class") || "—"}</span>
-                </div>
-              )}
-
-              {accent2 ? <div style={{ height: 4, background: accent2 }} /> : null}
-              {accent ? <div style={{ height: 4, background: accent }} /> : null}
-            </div>
+            <div style={{ height: BOTTOM_GAP, flex: "0 0 auto" }} />
+            {showFooter ? (
+              <div style={{ display: "flex", flexDirection: "column", backgroundColor: pageBg }}>
+                {footHTML ? (
+                  <div style={{ overflow: "hidden", lineHeight: 0 }}
+                    dangerouslySetInnerHTML={{ __html: renderTemplate(footHTML, { page: i + 1, total: pages.length, unit: getMetaFromPage(page, "unit"), className: getMetaFromPage(page, "class"), date: new Date().toLocaleDateString(), }) }} />
+                ) : (
+                  <div style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "8px 14px", borderTop: "1px solid #e5e7eb",
+                    color: textCol, backgroundColor: bgImg ? "transparent" : pageBg,
+                    fontSize: 12, fontWeight: 600
+                  }}>
+                    <span>{getMetaFromPage(page, "unit") || "—"}</span>
+                    <span>Page {i + 1} / {pages.length}</span>
+                    <span>{getMetaFromPage(page, "class") || "—"}</span>
+                  </div>
+                )}
+                {accent2 ? <div style={{ height: 4, background: accent2 }} /> : null}
+                {accent ? <div style={{ height: 4, background: accent }} /> : null}
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
 
       <style>{`
-[data-editable="true"] img, .doc-sheet img { cursor: zoom-in; }
+  [data-editable="true"] img, .doc-sheet img { cursor: zoom-in; }
 
-@media (max-width: 768px) {
-  div[data-docview] { padding: 8px 0 16px; }
-}
-  .doc-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-@media print {
-  body { background: #fff !important; }
-  * { box-shadow: none !important; }
-  .doc-sheet {
-    page-break-after: always;
-    border: none !important;
-    border-radius: 0 !important;
-    width: auto !important;
-    min-height: auto !important;
-    box-shadow: none !important;
-    background-color: #ffffff !important;
-    color: #000000 !important;
+  @media (max-width: 768px) {
+    div[data-docview] { padding: 8px 0 16px; }
   }
-}
-`}</style>
+    .doc-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @media print {
+    body { background: #fff !important; }
+    * { box-shadow: none !important; }
+    .doc-sheet {
+      page-break-after: always;
+      border: none !important;
+      border-radius: 0 !important;
+      width: auto !important;
+      min-height: auto !important;
+      box-shadow: none !important;
+      background-color: #ffffff !important;
+      color: #000000 !important;
+    }
+  }
+  `}</style>
     </div>
   );
 }
 /* ===========================
-   Page Component
+  Page Component
 =========================== */
 export default function BookDetailsPage() {
   const { id } = useParams();
@@ -2908,6 +3243,310 @@ export default function BookDetailsPage() {
   const [primaryContentId, setPrimaryContentId] = React.useState(null);
 
   const [topImageUrl, setTopImageUrl] = React.useState("");
+
+
+
+  // ---- state ----
+  const [exporting, setExporting] = React.useState(false);
+  const [exportNote, setExportNote] = React.useState("");
+  const [fastMode, setFastMode] = React.useState(true);
+  const ULTRA_FAST = true;
+  const JPEG_QUALITY = ULTRA_FAST ? 0.78 : (fastMode ? 0.82 : 0.92);
+
+
+  function freezeForExport() { document.body.classList.add("tbm-printing", "tbm-exporting"); try { window.scrollTo({ top: 0, behavior: "instant" }); } catch { } }
+  function unfreezeAfterExport() { document.body.classList.remove("tbm-printing", "tbm-exporting"); }
+
+  async function waitForFonts() { try { if (document?.fonts?.ready) await document.fonts.ready; } catch { } }
+  async function waitForImages(root) {
+    const imgs = Array.from(root.querySelectorAll("img"));
+    await Promise.all(imgs.map(img =>
+      (img.complete && img.naturalWidth > 0) ? Promise.resolve()
+        : new Promise(res => { const done = () => res(); img.addEventListener("load", done, { once: true }); img.addEventListener("error", done, { once: true }); })
+    ));
+  }
+
+  async function inlineExternalAssets(root) {
+    const revokers = [];
+    const imgs = Array.from(root.querySelectorAll("img"));
+    await Promise.all(imgs.map(async img => {
+      const src = img.getAttribute("src");
+      if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
+      try {
+        const r = await fetch(src, { mode: "cors", credentials: "omit", cache: "force-cache" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        img.setAttribute("data-old-src", src);
+        img.setAttribute("crossorigin", "anonymous");
+        img.src = url;
+        revokers.push(() => { try { URL.revokeObjectURL(url); } catch { } const old = img.getAttribute("data-old-src"); if (old) { img.src = old; img.removeAttribute("data-old-src"); } });
+      } catch {
+        if (!img.getAttribute("crossorigin")) img.setAttribute("crossorigin", "anonymous");
+      }
+    }));
+    const nodes = Array.from(root.querySelectorAll("*")).filter(n => {
+      const bg = getComputedStyle(n).backgroundImage || "";
+      return bg.startsWith('url("http') || bg.startsWith("url('http");
+    });
+    await Promise.all(nodes.map(async node => {
+      const bg = getComputedStyle(node).backgroundImage;
+      const m = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/i.exec(bg);
+      if (!m) return;
+      try {
+        const r = await fetch(m[2], { mode: "cors", credentials: "omit", cache: "force-cache" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const blob = await r.blob();
+        const objUrl = URL.createObjectURL(blob);
+        const prev = node.style.backgroundImage;
+        node.setAttribute("data-old-bg", prev || "");
+        node.style.backgroundImage = `url("${objUrl}")`;
+        revokers.push(() => { try { URL.revokeObjectURL(objUrl); } catch { } const old = node.getAttribute("data-old-bg"); if (old != null) { node.style.backgroundImage = old; node.removeAttribute("data-old-bg"); } });
+      } catch { }
+    }));
+    return () => revokers.forEach(fn => fn());
+  }
+
+  let _libOnce;
+  function loadScriptOnce(url) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = url; s.async = true; s.crossOrigin = "anonymous"; s.onload = () => res(true); s.onerror = () => rej(new Error("load failed: " + url)); document.head.appendChild(s); }); }
+  async function ensureCanvasAndPdfLibs() {
+    if (_libOnce) return _libOnce;
+    _libOnce = (async () => {
+      if (window.html2canvas && window.jspdf?.jsPDF) return;
+      const plans = [
+        async () => { await loadScriptOnce("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"); await loadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"); },
+        async () => { await loadScriptOnce("https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"); await loadScriptOnce("https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"); },
+        async () => { await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"); await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"); },
+      ];
+      let err = null; for (const p of plans) { try { await p(); if (window.html2canvas && window.jspdf?.jsPDF) return; } catch (e) { err = e; } }
+      throw err || new Error("Libraries could not be loaded");
+    })();
+    return _libOnce;
+  }
+  const TINY_TRANSPARENT_PNG =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA" +
+    "AAC0lEQVR42mP8/x8AAwMCAO4i+o4AAAAASUVORK5CYII=";
+
+  function isLikelyValidSrc(src = "") {
+    const s = String(src || "").trim();
+    if (!s) return false;
+    if (/^data:image\//i.test(s)) return true;
+    if (/^blob:/i.test(s)) return true;
+    if (/^https?:\/\//i.test(s) && !/[<>]/.test(s)) return true;
+    return false;
+  }
+
+  function fixWeirdImgSrc(src = "") {
+    let s = String(src || "").trim();
+    if (/[<>]/.test(s) || /%3C/i.test(s) || /%3E/i.test(s)) return null;
+    s = s.replace(/\s+/g, "");
+    return isLikelyValidSrc(s) ? s : null;
+  }
+  async function sanitizeImagesForExport(root) {
+    const imgs = Array.from(root.querySelectorAll("img"));
+    let fixed = 0, replaced = 0;
+    imgs.forEach(img => {
+      const raw = img.getAttribute("src") || "";
+      const clean = fixWeirdImgSrc(raw);
+      if (!clean) {
+        img.setAttribute("data-old-src", raw);
+        img.src = TINY_TRANSPARENT_PNG;
+        replaced++;
+        return;
+      }
+      if (clean !== raw) {
+        img.setAttribute("data-old-src", raw);
+        img.src = clean;
+        fixed++;
+      }
+      if (!img.getAttribute("crossorigin")) img.setAttribute("crossorigin", "anonymous");
+      img.decoding = "sync";
+      img.loading = "eager";
+      img.referrerPolicy = "no-referrer";
+    });
+    console.info(`[EXPORT] image sanitize → fixed=${fixed}, placeholders=${replaced}, total=${imgs.length}`);
+  }
+  function ms(n) { return `${Math.round(n)}ms`; }
+
+
+  const yieldNow = () => new Promise(r => setTimeout(r, 0));
+  const yieldIdle = () =>
+    new Promise(r => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 200 }) : setTimeout(r, 16)));
+
+  function ms(n) { return `${Math.round(n)}ms`; }
+
+  function ensureStagingRoot() {
+    let root = document.getElementById("tbm-export-staging");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "tbm-export-staging";
+      Object.assign(root.style, {
+        position: "fixed",
+        left: "-99999px",
+        top: "0",
+        width: "794px",
+        minHeight: "1123px",
+        overflow: "hidden",
+        zIndex: "-1",
+        background: "transparent",
+        contain: "content"
+      });
+      document.body.appendChild(root);
+    }
+    return root;
+  }
+
+  function makeIsolatedClone(sourceEl) {
+    const staging = ensureStagingRoot();
+    staging.innerHTML = "";
+    const clone = sourceEl.cloneNode(true);
+    clone.classList.add("tbm-exporting");
+    staging.appendChild(clone);
+    return { staging, clone };
+  }
+
+  async function withWatchdog(promiseFactory, timeoutMs) {
+    let timer;
+    const timeout = new Promise((_, rej) => {
+      timer = setTimeout(() => rej(new Error("timeout")), timeoutMs);
+    });
+    try {
+      const res = await Promise.race([promiseFactory(), timeout]);
+      clearTimeout(timer);
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      throw e;
+    }
+  }
+
+  async function handleExportPDFDirect() {
+    if (exporting) return;
+    const root = document.querySelector('[data-docview]');
+    if (!root) return alert("Document not found");
+
+    setExporting(true);
+    setExportNote("Loading export libraries…");
+    const tLibs = performance.now();
+    await ensureCanvasAndPdfLibs();
+    console.log(`[EXPORT] libs ready in ${ms(performance.now() - tLibs)}`);
+
+    const html2canvas = window.html2canvas;
+    const jsPDF = window.jspdf.jsPDF;
+
+    const pagesEls = Array.from(root.querySelectorAll('.doc-sheet'));
+    if (!pagesEls.length) { setExporting(false); return alert("No pages found"); }
+
+    freezeForExport();
+    await sanitizeImagesForExport(root);
+    const ULTRA_FAST = true;
+    const restore = ULTRA_FAST ? null : await inlineExternalAssets(root);
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    const pageWmm = pdf.internal.pageSize.getWidth();
+    const pageHmm = pdf.internal.pageSize.getHeight();
+
+    const BASE = {
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: null,
+      letterRendering: false,
+      logging: false,
+      scrollX: 0, scrollY: 0,
+      removeContainer: true,
+      onclone: (doc) => {
+        doc.body.classList.add("tbm-printing", "tbm-exporting");
+        try { sanitizeImagesForExport(doc); } catch { }
+      }
+    };
+
+    const SCALES = [1.0, 0.9, 0.8, 0.7];
+
+    const PAGE_TIMEOUT_MS = 4500;
+
+    const total = pagesEls.length;
+    const t0 = performance.now();
+    const times = [];
+
+    for (let i = 0; i < total; i++) {
+      const start = performance.now();
+      console.log(`[EXPORT] ▶ page ${i + 1}/${total}`);
+
+      setExportNote(`Rendering page ${i + 1} / ${total}…`);
+
+      await yieldNow();
+
+      const { staging, clone } = makeIsolatedClone(pagesEls[i]);
+
+
+      await waitForImages(clone);
+
+      let canvas = null;
+      let lastErr = null;
+
+      for (const scale of SCALES) {
+        try {
+          canvas = await withWatchdog(
+            () => html2canvas(clone, { ...BASE, scale }),
+            PAGE_TIMEOUT_MS
+          );
+          console.log(`[EXPORT] page ${i + 1} rendered at scale=${scale}`);
+          break;
+        } catch (e) {
+          lastErr = e;
+          console.warn(`[EXPORT] page ${i + 1} retry with lower scale; reason=${e.message}`);
+
+          await yieldIdle();
+        }
+      }
+
+      if (!canvas) {
+        console.error(`[EXPORT] page ${i + 1} failed, inserting blank page.`);
+        const tmp = document.createElement("canvas");
+        tmp.width = 794; tmp.height = 1123;
+        const ctx = tmp.getContext("2d");
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, tmp.width, tmp.height);
+        ctx.fillStyle = "#e11d48";
+        ctx.font = "16px sans-serif";
+        ctx.fillText("Page failed to render", 24, 36);
+        canvas = tmp;
+      }
+
+      const imgData = canvas.toDataURL("image/jpeg", 0.8);
+      if (i > 0) pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 0, 0, pageWmm, pageHmm);
+
+      try { canvas.width = canvas.height = 0; } catch { }
+      try { staging.innerHTML = ""; } catch { }
+
+      const dt = performance.now() - start;
+      times.push(dt);
+      const avg = times.reduce((a, b) => a + b, 0) / times.length;
+      const left = total - (i + 1);
+      const eta = left * avg;
+      console.log(`[EXPORT] page ${i + 1}/${total}: ${ms(dt)} | avg ${ms(avg)} | ETA ${ms(eta)}`);
+      setExportNote(`Page ${i + 1}/${total} done • avg ${ms(avg)} • ETA ${ms(eta)}`);
+
+
+      await yieldIdle();
+    }
+
+    const filename = `${(book?.title || "book").replace(/[^\w\d\-]+/g, "_")}.pdf`;
+    const tSave = performance.now();
+    setExportNote("Finalizing…");
+    pdf.save(filename);
+    console.log(`[EXPORT] pdf.save took ${ms(performance.now() - tSave)}`);
+
+    const totalMs = performance.now() - t0;
+    console.log(`[EXPORT] ✅ DONE in ${ms(totalMs)} for ${total} pages`);
+
+    try { restore?.(); } catch { }
+    unfreezeAfterExport();
+    setExportNote("");
+    setExporting(false);
+  }
+
+
 
   const [apply, setApply] = React.useState({
     page_bg: true,
@@ -3198,8 +3837,8 @@ export default function BookDetailsPage() {
   };
 
   /* =========================
-     BOOK CONTENT SAVE HELPERS
-     ========================= */
+    BOOK CONTENT SAVE HELPERS
+    ========================= */
   function pickId(v) {
     if (v == null) return null;
     if (typeof v === "string" || typeof v === "number") return String(v);
@@ -3413,8 +4052,8 @@ export default function BookDetailsPage() {
   }
 
   /* ============
-     SAVE (PATCH)
-     ============ */
+    SAVE (PATCH)
+    ============ */
   function headersToObject(h) {
     const out = {};
     try { for (const [k, v] of h.entries()) out[k] = v; } catch { }
@@ -3680,6 +4319,30 @@ export default function BookDetailsPage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={handleExportPDFDirect}
+              disabled={exporting}
+              className="no-print"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8, height: 36,
+                borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 12px",
+                background: "#fff", color: "#0f172a", cursor: exporting ? "not-allowed" : "pointer", fontWeight: 600
+              }}
+              title={exporting ? exportNote || "Exporting…" : "Download as PDF"}
+            >
+              {exporting ? (
+                <span style={{
+                  width: 16, height: 16, border: "2px solid #94a3b8",
+                  borderTopColor: "#0f172a", borderRadius: "50%", display: "inline-block",
+                  animation: "tbmSpin 0.8s linear infinite"
+                }} />
+              ) : "⬇️"}
+              <span>{exporting ? (exportNote || "Exporting…") : "Download PDF"}</span>
+            </button>
+
+
+
+
             <button
               onClick={() => {
                 setShowThemePanel((s) => !s);
@@ -4029,6 +4692,29 @@ export default function BookDetailsPage() {
           </div>
         </div>
       </div>
+      <style jsx global>{`
+    /* A4 @ ~96dpi = 794 x 1123px */
+    .tbm-exporting .doc-sheet {
+      width: 794px !important;
+    }
+    .tbm-exporting .tbm-page,
+    .tbm-exporting .tbm-body {
+      width: 100% !important;
+      min-height: 100% !important;
+    }
+
+    /* Already suggested hardening for speed */
+    @keyframes tbmSpin { to { transform: rotate(360deg); } }
+    .tbm-exporting *, .tbm-printing *{
+      animation:none!important; transition:none!important;
+      box-shadow:none!important; filter:none!important; text-shadow:none!important; backdrop-filter:none!important;
+    }
+    .tbm-exporting aside{ display:none!important; } /* hide sidebar in export */
+    .tbm-exporting .doc-sheet,
+    .tbm-exporting .tbm-page,
+    .tbm-exporting .tbm-body{ background-image:none!important; }
+  `}</style>
+
     </div>
   );
 }
@@ -4069,3 +4755,4 @@ function createWatermarkedBackgroundSVG({
 
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
+

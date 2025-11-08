@@ -32,9 +32,17 @@ const tc = (s) => (s || '').toString().toLowerCase().replace(/\b\w/g, m => m.toU
 /* pretty short date */
 const d = (iso) => iso ? new Date(iso).toLocaleDateString() : '';
 
+const COVER_BASE = 'https://tbmplus-backend.ultimeet.io';
+
 export default function BookTile({ book, onClick }) {
   const [hover, setHover] = useState(false);
-  const cover = useMemo(() => pickGradient(book?.title || book?.category || ''), [book?.title, book?.category]);
+  const gradient = useMemo(() => pickGradient(book?.title || book?.category || ''), [book?.title, book?.category]);
+
+  // Build absolute cover URL from any known field
+  const coverPath = book?.cover_url || book?.cover_page || book?.coverPage || null;
+  const coverUrl = coverPath
+    ? (String(coverPath).startsWith('http') ? coverPath : `${COVER_BASE}${coverPath}`)
+    : null;
 
   // normalize fields coming from API
   const status =
@@ -47,6 +55,22 @@ export default function BookTile({ book, onClick }) {
   const expectedPages = book?.expected_pages ?? 0;
   const estWords = expectedPages * 250;            // rough words/page
   const estReadMins = Math.max(1, Math.round(estWords / 200)); // 200 wpm
+
+  // Front cover style: image if present, else gradient
+  const frontCoverStyle = coverUrl
+    ? {
+        backgroundImage: `url(${coverUrl})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backfaceVisibility: 'hidden',
+        transformStyle: 'preserve-3d',
+      }
+    : {
+        background: gradient,
+        backfaceVisibility: 'hidden',
+        transformStyle: 'preserve-3d',
+      };
 
   return (
     <button
@@ -67,11 +91,7 @@ export default function BookTile({ book, onClick }) {
           {/* Front cover */}
           <div
             className="absolute inset-0 rounded-lg overflow-hidden"
-            style={{
-              background: cover,
-              backfaceVisibility: 'hidden',
-              transformStyle: 'preserve-3d',
-            }}
+            style={frontCoverStyle}
           >
             {/* subtle pattern */}
             <div className="absolute inset-0 opacity-15">
@@ -110,7 +130,6 @@ export default function BookTile({ book, onClick }) {
               <h3 className="font-bold text-[17px] leading-tight line-clamp-2 drop-shadow-sm">
                 {book.title || 'Untitled'}
               </h3>
-
 
               {/* meta row */}
               <div className="mt-2 text-[11px] opacity-95 flex flex-wrap items-center gap-x-4 gap-y-1">

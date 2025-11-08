@@ -112,12 +112,10 @@ export default function BookGrid({ books = [], loading = false, onBookSelect }) 
         <StatCard icon={<CheckSquare className="h-5 w-5" />} label="Completed" value={stats.completed} tone="green" />
         <StatCard icon={<Activity className="h-5 w-5" />} label="In Progress" value={stats.inProgress} tone="indigo" />
         <StatCard icon={<Edit3 className="h-5 w-5" />} label="Drafts" value={stats.draft} tone="yellow" />
-        <StatCard icon={<FileText className="h-5 w-5" />} label="Chapters" value={stats.totalChapters} tone="purple" />
+        {/* <StatCard icon={<FileText className="h-5 w-5" />} label="Chapters" value={stats.totalChapters} tone="purple" /> */}
       </div>
 
-      {/* ---- controls (search + filters + sort) ---- */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
-        {/* search */}
         <div className="relative max-w-md w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
@@ -136,43 +134,46 @@ export default function BookGrid({ books = [], loading = false, onBookSelect }) 
           )}
         </div>
 
-        {/* right side: quick status + sort */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* quick status chips */}
           <Chip label="All" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
           <Chip label="Published" active={statusFilter === 'published'} onClick={() => setStatusFilter('published')} />
           <Chip label="Completed" active={statusFilter === 'completed'} onClick={() => setStatusFilter('completed')} />
           <Chip label="In Progress" active={statusFilter === 'in-progress'} onClick={() => setStatusFilter('in-progress')} />
           <Chip label="Draft" active={statusFilter === 'draft'} onClick={() => setStatusFilter('draft')} />
 
-          {/* sort */}
-          <div className="flex items-center gap-2 ml-auto">
-            <select
-              className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-            >
-              <option value="lastModified">Last Modified</option>
-              <option value="createdAt">Created Date</option>
-              <option value="title">Title</option>
-              <option value="chapters">Chapters</option>
-            </select>
-            <button
-              onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
-              className="px-2.5 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-              title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-            >
-              {sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* ---- results count ---- */}
-      <div className="text-sm text-gray-500 mb-3">
-        Showing <span className="font-medium text-gray-700">{filtered.length}</span> of{' '}
-        <span className="font-medium text-gray-700">{books.length}</span> books
+
+      <div className="-mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-0 pb-4">
+
+        <div className="text-sm text-gray-500">
+          Showing <span className="font-medium text-gray-700">{filtered.length}</span> of{" "}
+          <span className="font-medium text-gray-700">{books.length}</span> books
+        </div>
+
+        {/* Right: controls */}
+        <div className="flex items-center gap-2 sm:ml-0 ml-auto">
+          <select
+            className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="lastModified">Last Modified</option>
+            <option value="createdAt">Created Date</option>
+            <option value="title">Title</option>
+          </select>
+          <button
+            onClick={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
+            className="px-2.5 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            title={`Sort ${sortOrder === "asc" ? "Descending" : "Ascending"}`}
+          >
+            {sortOrder === "asc" ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
+
+
 
       {/* ---- grid ---- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -188,12 +189,12 @@ export default function BookGrid({ books = [], loading = false, onBookSelect }) 
 
 function StatCard({ icon, label, value, tone = 'blue' }) {
   const tones = {
-    blue:    'text-blue-600 bg-blue-50 border-blue-100',
-    green:   'text-green-600 bg-green-50 border-green-100',
-    indigo:  'text-indigo-600 bg-indigo-50 border-indigo-100',
-    yellow:  'text-yellow-700 bg-yellow-50 border-yellow-100',
-    purple:  'text-purple-600 bg-purple-50 border-purple-100',
-    orange:  'text-orange-600 bg-orange-50 border-orange-100',
+    blue: 'text-blue-600 bg-blue-50 border-blue-100',
+    green: 'text-green-600 bg-green-50 border-green-100',
+    indigo: 'text-indigo-600 bg-indigo-50 border-indigo-100',
+    yellow: 'text-yellow-700 bg-yellow-50 border-yellow-100',
+    purple: 'text-purple-600 bg-purple-50 border-purple-100',
+    orange: 'text-orange-600 bg-orange-50 border-orange-100',
   };
   const t = tones[tone] || tones.blue;
 
@@ -216,11 +217,10 @@ function Chip({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-        active
-          ? 'bg-blue-600 text-white border-blue-600'
-          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-      }`}
+      className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${active
+        ? 'bg-blue-600 text-white border-blue-600'
+        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+        }`}
     >
       {label}
     </button>
