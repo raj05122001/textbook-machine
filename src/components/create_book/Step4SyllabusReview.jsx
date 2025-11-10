@@ -37,7 +37,6 @@ export function Step4SyllabusReview({
 }) {
   /* local state for feedback textarea (UX: disable send if empty) */
   const [feedback, setFeedback] = useState('');
-
   if (isStreaming) {
     return (
       <div className="space-y-6 text-center">
@@ -229,7 +228,11 @@ export function Step4SyllabusReview({
               <textarea
                 rows={3}
                 value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFeedback(val);
+                  onFeedback(val);              // 🔸 push live text to parent (typing path)
+                }}
                 placeholder='e.g., "Increase the number of units, add more calculus examples"'
                 className="w-full min-h-[96px] px-3 py-2 rounded-lg border border-blue-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
@@ -241,8 +244,8 @@ export function Step4SyllabusReview({
 
             <div className="flex md:flex-col gap-2 md:gap-3">
               <button
-                onClick={() => onFeedback('SEND')}
-                disabled={!feedback.trim()}
+                onClick={() => onFeedback({ type: "SEND", text: feedback })}
+              
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Send feedback & regenerate"
               >

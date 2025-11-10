@@ -647,40 +647,75 @@ export default function CreateBookPage() {
       setErrors([`Save failed: ${e.message}`]);
     }
   };
-
   const sendFeedback = async (valueOrSend) => {
-    if (!syllabusId) return setErrors(["No syllabus to send feedback for."]);
-    const text = valueOrSend === "SEND" ? feedbackText : valueOrSend;
-
-    // typing path – just store text
-    if (valueOrSend !== "SEND") {
-      setFeedbackText(text);
+    if (!syllabusId) {
+      setErrors(["No syllabus to send feedback for."]);
       return;
     }
 
-    if (!text.trim()) return setErrors(["Feedback cannot be empty."]);
+    // Is this a click on SEND, or just typing?
+    const isSendClick =
+      (typeof valueOrSend === "object" && valueOrSend?.type === "SEND") ||
+      valueOrSend === "SEND";
+
+    // Resolve the text
+    const text = isSendClick
+      ? (typeof valueOrSend === "object" ? valueOrSend.text : feedbackText)
+      : valueOrSend;
+
+    // --- Typing path: keep parent in sync and clear stale "empty" error if any
+    if (!isSendClick) {
+      const live = String(text ?? "");
+      setFeedbackText(live);
+      // clear ONLY the "Feedback cannot be empty." message if user has typed something
+      if (live.trim()) {
+        setErrors((prev) => prev.filter((e) => e !== "Feedback cannot be empty."));
+      }
+      console.log("typing feedback:", live);
+      return;
+    }
+
+    // --- SEND path
+    const toSend = String(text ?? "").trim();
+    if (!toSend) {
+      // ensure error is displayed only when actually empty at click time
+      setErrors((prev) => {
+        // avoid duplicates
+        if (prev.includes("Feedback cannot be empty.")) return prev;
+        return [...prev, "Feedback cannot be empty."];
+      });
+      return;
+    }
+
+    console.log("sending feedback:", toSend);
 
     try {
-      // we expect the backend to start a new generation and push via WS
+      // we do expect fresh WS frames after sending
       syllabusExpectingRef.current = true;
       setIsSyllabusStreaming(true);
       setProcessingStep("Regenerating...");
 
-      // (re)open the socket right before sending feedback, in case it was closed after first completion
+      // make sure the socket is open
       openSyllabusSocket(syllabusId);
 
       await jfetch(`/api/syllabi/${syllabusId}/feedback/`, {
         method: "POST",
-        body: { feedback: text.trim() },
+        body: { feedback: toSend },
       });
+
+      // clear the stale empty-error on success (if it was shown previously)
+      setErrors((prev) => prev.filter((e) => e !== "Feedback cannot be empty."));
+
       toast.success("Feedback sent");
-      // results will arrive on the websocket we just opened
+      // results will arrive via WS
     } catch (e) {
       syllabusExpectingRef.current = false;
       setIsSyllabusStreaming(false);
       setErrors([`Feedback failed: ${e.message}`]);
     }
   };
+
+
 
   const approveSyllabus = async () => {
     if (!syllabusId) return setErrors(["No syllabus to approve."]);

@@ -91,7 +91,7 @@ async function createPrimaryKnowledgeRecords({ records }) {
 }
 
 /* ------------------------------- helper: WS ------------------------------ */
-function vectorizeOverWS(knowledgeIds) {
+function vectorizeOverWS(knowledgeIds, book_id) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(WS_URL);
 
@@ -103,7 +103,8 @@ function vectorizeOverWS(knowledgeIds) {
       const msg = {
         type: "vectorize_book",
         knowledge_ids: knowledgeIds,
-        while_book_generation: false,
+        while_book_generation: true,
+        book_id: book_id
       };
       ws.send(JSON.stringify(msg));
     };
@@ -116,11 +117,8 @@ function vectorizeOverWS(knowledgeIds) {
     ws.onmessage = (evt) => {
       try {
         const payload = JSON.parse(evt.data || "{}");
-        // optional: { status:"started" | "completed" | "all_completed", ...}
         if (payload?.status === "started") {
-          // no-op
         } else if (payload?.status === "completed") {
-          // one id done
         } else if (payload?.status === "all_completed") {
           cleanup();
           resolve(true);
@@ -131,21 +129,19 @@ function vectorizeOverWS(knowledgeIds) {
     };
 
     ws.onclose = () => {
-      // If it closed before "all_completed", still resolve gracefully.
-      // Most of the time we’ll already have resolved on all_completed.
+   
     };
   });
 }
 
-/* -------------------------------- component ------------------------------ */
 export default function SourceMixFlow({
-  option,                 // 'upload' | 'primary' | 'mixture'
+  option,              
   onOptionChange,
-  value,                  // { primary, trusted, internet, urls }
+  value,                
   onChange,
   title = "Content Preferences",
-  bookId,                 // required for /api/content_preferences/
-  subject,                // subject name (string)
+  bookId,                
+  subject,              
   formData,
   onSubjectError,
   onSaved,
@@ -346,7 +342,7 @@ export default function SourceMixFlow({
         const knowledgeIds = await createPrimaryKnowledgeRecords({ records });
 
         // 3) vectorize over WS and wait until all_completed
-        await vectorizeOverWS(knowledgeIds);
+        await vectorizeOverWS(knowledgeIds, bookId);
 
         // 4) save content preferences with UPLOADED + IDs in primary_metadata
         const payload = buildPreferencesPayload({ mode: "upload", knowledgeIds });
