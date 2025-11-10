@@ -10,10 +10,12 @@ import TextFormat, { markdownToHtml } from "@/components/format/TextFormat";
 import toast from "react-hot-toast";
 const API_BASE = "https://tbmplus-backend.ultimeet.io";
 
-const DOC_FONT = 12;
-const DOC_LINE_HEIGHT = 1;
-
-
+function readCookie(name) {
+  if (typeof document === "undefined") return null;
+  const pattern = new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1") + '=([^;]*)');
+  const match = document.cookie.match(pattern);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 function ImageMagnifierOverlay({
   src,
   onClose,
@@ -629,540 +631,6 @@ function readMeta(html) {
   return { unit, title, className: klass };
 }
 
-function measureA4ContentBox() {
-  const FOOTER_SAFETY_GAP = 20;
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return { width: 770, height: 980 - FOOTER_SAFETY_GAP };
-  }
-  const page = document.querySelector('.doc-sheet');
-  if (!page) return { width: 770, height: 940 - FOOTER_SAFETY_GAP };
-
-  const headerWrap = page.firstElementChild;
-  const body = page.querySelector('[data-editable]');
-  const footerWrap = page.lastElementChild;
-
-  const pageRect = page.getBoundingClientRect();
-
-  const headerH = headerWrap ? headerWrap.getBoundingClientRect().height : 0;
-  const footerH = footerWrap ? footerWrap.getBoundingClientRect().height : 0;
-
-  const pageBorder = 2;
-  const style = body ? getComputedStyle(body) : null;
-  const padL = style ? parseFloat(style.paddingLeft) : 12;
-  const padR = style ? parseFloat(style.paddingRight) : 12;
-
-  const contentWidth = body ? Math.floor(body.clientWidth)
-    : Math.floor(pageRect.width - pageBorder - padL - padR);
-
-
-  const contentHeight = Math.max(
-    0,
-    Math.floor(pageRect.height - headerH - footerH - FOOTER_SAFETY_GAP)
-  );
-
-  return { width: contentWidth, height: contentHeight };
-}
-
-function paginateHTMLIntoA4(html, {
-  width = 700,          // content width in px (match your page inner width)
-  maxHeight = 940,      // usable content height (exclude header/footer strips)
-  fontSize = 16,        // baseline font, helps layout match
-  lineHeight = 1.7,
-} = {}) {
-  // 1) Make hidden sandbox root
-  const root = document.createElement("div");
-  Object.assign(root.style, {
-    position: "fixed",
-    left: "-99999px",
-    top: "0",
-    width: `${width}px`,
-    maxHeight: `${maxHeight}px`,
-    boxSizing: "border-box",
-    padding: "0",
-    fontSize: `${fontSize}px`,
-    lineHeight: String(lineHeight),
-    wordBreak: "break-word",
-    whiteSpace: "normal",
-    overflow: "hidden",
-    background: "#fff",
-  });
-  document.body.appendChild(root);
-
-  // parse HTML into a working fragment
-  const scratch = document.createElement("div");
-  scratch.innerHTML = html;
-
-  const pages = [];
-  let page = document.createElement("div");
-  page.style.minHeight = `${maxHeight}px`;
-  root.innerHTML = ""; // ensure empty
-  root.appendChild(page);
-
-  // helpers
-  const fits = () => page.scrollHeight <= maxHeight;
-
-  const cloneShallow = (node) => {
-    const c = node.cloneNode(false);
-    if (node.nodeType === 1) c.style.cssText = node.style?.cssText || "";
-    return c;
-  };
-
-  const splitTextToFit = (textNode) => {
-    const full = textNode.textContent || "";
-    let lo = 0, hi = full.length, ok = 0;
-
-    // binary search largest prefix that fits
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      textNode.textContent = full.slice(0, mid);
-      if (fits()) { ok = mid; lo = mid + 1; } else { hi = mid - 1; }
-    }
-
-    const head = full.slice(0, ok);
-    const tail = full.slice(ok);
-    textNode.textContent = head;
-    return tail;
-  };
-
-  const ensureImgFits = (img) => {
-    // lock to container width first
-    img.style.maxWidth = "100%";
-    img.style.height = "auto";
-
-    const r = img.getBoundingClientRect();
-    // If image still exceeds the page content height, scale it down by height
-    if (r.height > maxHeight) {
-      const natW = img.naturalWidth || r.width || 1;
-      const natH = img.naturalHeight || r.height || 1;
-      const ratio = natW / natH;
-
-      const targetH = Math.min(maxHeight - 8, natH);
-      const targetW = Math.round(targetH * ratio);
-
-      img.style.height = `${targetH}px`;
-      img.style.width = `${Math.min(targetW, width)}px`; // respect content width
-      img.style.objectFit = "contain";
-    }
-  };
-
-  const breakBeforeTags = new Set(["H1", "H2", "H3", "H4", "H5", "H6", "TABLE", "HR"]);
-
-  // core: add a node, splitting if needed
-  const addNode = (node) => {
-    if (node.nodeType === 3) {
-      // text node
-      const t = document.createTextNode(node.textContent || "");
-      page.appendChild(t);
-      if (fits()) return null;
-      // split text
-      const remainder = splitTextToFit(t);
-      if (remainder && remainder.trim()) {
-        return document.createTextNode(remainder);
-      }
-      return null;
-    }
-
-    if (node.nodeType !== 1) return null; // skip others
-
-    // if heading/table: optional soft page break before, if current is not empty and near end
-    if (breakBeforeTags.has(node.tagName) && page.childNodes.length > 0) {
-      if (!fits()) newPage();
-      // if it still doesn't fit, we'll handle below
-    }
-
-    // try whole node first
-    const test = node.cloneNode(true);
-    // image fit adjustment (only for single <img>)
-    if (test.tagName === "IMG") {
-      page.appendChild(test);
-      ensureImgFits(test);
-      if (!fits()) { // even after scale, push to new page
-        page.removeChild(test);
-        newPage();
-        page.appendChild(test);
-        ensureImgFits(test);
-      }
-      return null;
-    }
-
-    page.appendChild(test);
-    if (fits()) return null;
-
-    // too big → remove and split recursively
-    page.removeChild(test);
-    const shell = cloneShallow(node);
-    page.appendChild(shell);
-
-    for (let i = 0; i < node.childNodes.length; i++) {
-      const child = node.childNodes[i].cloneNode(true);
-
-      // try the child as a whole
-      shell.appendChild(child);
-      if (fits()) continue;
-
-      // remove child, and append piecewise
-      shell.removeChild(child);
-
-      if (child.nodeType === 3) {
-        // split text
-        const t = document.createTextNode(child.textContent || "");
-        shell.appendChild(t);
-        const rem = splitTextToFit(t);
-        if (rem && rem.trim()) {
-          // carry remainder to next page inside same block shell
-          child.textContent = rem;
-          // start a new page with a fresh shell and continue
-          const carry = cloneShallow(node);
-          newPage();
-          page.appendChild(carry);
-          // put the leftover text first
-          const t2 = document.createTextNode(rem);
-          carry.appendChild(t2);
-        }
-      } else if (child.nodeType === 1) {
-        // element: descend
-        const leftover = splitElement(child, shell);
-        if (leftover) {
-          newPage();
-          const shell2 = cloneShallow(node);
-          page.appendChild(shell2);
-          shell2.appendChild(leftover);
-        }
-      }
-    }
-    return null;
-  };
-
-  const splitElement = (elem, targetParent) => {
-    // returns leftover node for next page (or null)
-    const holder = cloneShallow(elem);
-    targetParent.appendChild(holder);
-
-    // special-case images inside
-    if (elem.tagName === "IMG") {
-      holder.appendChild(elem.cloneNode(true));
-      ensureImgFits(holder.firstChild);
-      if (!fits()) {
-        targetParent.removeChild(holder);
-        return elem.cloneNode(true); // move entirely to next page
-      }
-      return null;
-    }
-
-    for (let i = 0; i < elem.childNodes.length; i++) {
-      const child = elem.childNodes[i].cloneNode(true);
-      holder.appendChild(child);
-
-      if (fits()) continue;
-
-      // overflow → remove child and split it
-      holder.removeChild(child);
-
-      if (child.nodeType === 3) {
-        const t = document.createTextNode(child.textContent || "");
-        holder.appendChild(t);
-        const rem = splitTextToFit(t);
-        if (rem && rem.trim()) {
-          // leftover element with remaining text
-          const leftover = cloneShallow(elem);
-          const t2 = document.createTextNode(rem);
-          leftover.appendChild(t2);
-          return leftover;
-        }
-      } else if (child.nodeType === 1) {
-        const leftoverChild = splitElement(child, holder);
-        if (leftoverChild) {
-          const leftover = cloneShallow(elem);
-          leftover.appendChild(leftoverChild);
-          return leftover;
-        }
-      }
-    }
-    return null;
-  };
-
-  const newPage = () => {
-    // finalize current page
-    const htmlOut = page.innerHTML;
-    pages.push(`<div class="tbm-body">${htmlOut}</div>`);
-    // start fresh
-    page = document.createElement("div");
-    page.style.minHeight = `${maxHeight}px`;
-    root.innerHTML = "";
-    root.appendChild(page);
-  };
-
-  // Stream children of the source block
-  while (scratch.firstChild) {
-    const node = scratch.firstChild;
-    scratch.removeChild(node);
-    const leftover = addNode(node);
-    if (leftover) {
-      // current page is full; close it and start next
-      newPage();
-      // push leftover into scratch to continue processing
-      scratch.insertBefore(leftover, scratch.firstChild);
-    } else {
-      if (!fits()) {
-        newPage();
-      }
-    }
-  }
-
-  // flush last page
-  if (page.childNodes.length) newPage();
-
-  // cleanup
-  try { document.body.removeChild(root); } catch { }
-  return pages;
-}
-const WORDS_PER_PAGE = 200;
-const USE_WORD_PAGINATION = true;
-function splitIntoWordPages(html = "", wordsPerPage = WORDS_PER_PAGE) {
-
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    const text = String(html || "").replace(/<[^>]+>/g, " ");
-    const words = (text.match(/\S+/g) || []);
-    const chunks = [];
-    for (let i = 0; i < words.length; i += wordsPerPage) {
-      const slice = words.slice(i, i + wordsPerPage).join(" ");
-      chunks.push(`<div>${slice}</div>`);
-    }
-    return chunks.length ? chunks : ["<div></div>"];
-  }
-  const root = document.createElement("div");
-  root.innerHTML = String(html || "");
-
-  const pages = [];
-  let wordsLeft = wordsPerPage;
-
-  const isSkippable = (n) =>
-    n.nodeType === 8 ||
-    (n.nodeType === 1 && /^(script|style)$/i.test(n.tagName));
-
-  const wordCountOfText = (s) => (String(s || "").trim().match(/\S+/g) || []).length;
-
-  function splitTextToBudget(text, budget) {
-    const words = String(text || "").match(/\S+|\s+/g) || [];
-    let used = 0, i = 0;
-    for (; i < words.length; i++) {
-      if (!/\S/.test(words[i])) continue;
-      if (used + 1 > budget) break;
-      used += 1;
-    }
-    const head = words.slice(0, i).join("");
-    const tail = words.slice(i).join("");
-    return { head, tail };
-  }
-
-  // clone node shallow with attributes/styles intact
-  function cloneShallow(node) {
-    if (node.nodeType === 3) return document.createTextNode(node.textContent);
-    const c = node.cloneNode(false);
-    return c;
-  }
-
-  // append nodeClone to target
-  function append(target, n) { target.appendChild(n); }
-
-  // recursive packer: tries to pack "node" into "bucket" with current budget
-  // returns leftover node (for next page) or null
-  function pack(node, bucket) {
-    if (isSkippable(node)) return null;
-
-    if (node.nodeType === 3) {
-      const txt = node.textContent || "";
-      const wc = wordCountOfText(txt);
-
-      if (wc <= wordsLeft) {
-        append(bucket, document.createTextNode(txt));
-        wordsLeft -= wc;
-        return null;
-      }
-      // need to split text across pages
-      if (wordsLeft > 0) {
-        const { head, tail } = splitTextToBudget(txt, wordsLeft);
-        if (head) append(bucket, document.createTextNode(head));
-        wordsLeft = 0;
-        // leftover text node goes to next page
-        return document.createTextNode(tail);
-      }
-      // no budget at all → full text goes to next page
-      return document.createTextNode(txt);
-    }
-
-    if (node.nodeType === 1) {
-      // treat <img> (and media) atomically: don't count as words but keep together
-      if (/^(img|svg|video|canvas|figure|iframe)$/i.test(node.tagName)) {
-        if (bucket.childNodes.length === 0 || wordsLeft > 0) {
-          append(bucket, node.cloneNode(true));
-          return null;
-        } else {
-          return node.cloneNode(true);
-        }
-      }
-
-      const shell = cloneShallow(node);
-      append(bucket, shell);
-
-      for (let i = 0; i < node.childNodes.length; i++) {
-        const child = node.childNodes[i];
-        const leftover = pack(child, shell);
-        if (leftover) {
-          // we filled the page; make a wrapper for leftover under same parent
-          const leftoverShell = cloneShallow(node);
-          leftoverShell.appendChild(leftover);
-          // also carry over remaining siblings to leftoverShell
-          for (let j = i + 1; j < node.childNodes.length; j++) {
-            leftoverShell.appendChild(node.childNodes[j].cloneNode(true));
-          }
-          return leftoverShell;
-        }
-      }
-      return null;
-    }
-
-    // other node types: just clone
-    append(bucket, node.cloneNode(true));
-    return null;
-  }
-
-  // walk root children and fill pages
-  let scratch = document.createElement("div");
-  // move children to a queue to preserve order
-  const queue = Array.from(root.childNodes);
-
-  while (queue.length) {
-    const page = document.createElement("div"); // this will be inner .tbm-body content
-    wordsLeft = wordsPerPage;
-
-    // fill page until budget ends
-    while (queue.length && wordsLeft >= 0) {
-      const node = queue.shift();
-      const leftover = pack(node, page);
-      if (leftover) {
-        // page full → push leftover to queue head for next page
-        queue.unshift(leftover);
-        break;
-      }
-    }
-
-    pages.push(page.innerHTML || "<div></div>");
-  }
-
-  return pages;
-}
-function measureNeededHeight(html, { width, baseFont = 16, lineHeight = 1.7 } = {}) {
-  if (typeof document === "undefined") return 0;
-  const host = document.createElement("div");
-  host.style.cssText = `
-    position:fixed; left:-99999px; top:0;
-    width:${width}px; box-sizing:border-box;
-    font-size:${baseFont}px; line-height:${lineHeight};
-    padding:0; margin:0; visibility:hidden;
-  `;
-  host.innerHTML = `<div>${html}</div>`;
-  document.body.appendChild(host);
-  const need = host.firstElementChild.scrollHeight;
-  document.body.removeChild(host);
-  return need;
-}
-
-function willOverflow(html, { width, maxHeight, baseFont = DOC_FONT, lineHeight = DOC_LINE_HEIGHT }) {
-  if (typeof document === "undefined") return false;
-  const need = measureNeededHeight(html, { width, baseFont, lineHeight });
-  return need > maxHeight;
-}
-function autoFitHtmlToHeight(html, {
-  width,
-  maxHeight,
-  baseFont = DOC_FONT,
-  lineHeight = DOC_LINE_HEIGHT,
-  minScale = 0.85,
-  minFont = 12,
-} = {}) {
-  if (typeof document === "undefined") return html; // SSR guard
-
-  const host = document.createElement("div");
-  host.style.cssText = `
-    position:fixed; left:-99999px; top:0;
-    width:${width}px; box-sizing:border-box;
-    font-size:${baseFont}px; line-height:${lineHeight};
-    padding:0; margin:0; visibility:hidden;
-  `;
-  host.innerHTML = `<div class="__fit_inner">${html}</div>`;
-  document.body.appendChild(host);
-
-  const inner = host.firstElementChild;
-  let need = inner.scrollHeight;
-
-  let scale = Math.min(1, maxHeight / Math.max(1, need));
-  if (scale >= minScale) {
-    const out = `
-      <div style="height:${maxHeight}px; overflow:hidden; position:relative;">
-        <div style="transform:scale(${scale});
-                    transform-origin: top left;
-                    width:${width}px;
-                    font-size:${baseFont}px; line-height:${lineHeight};">
-          ${html}
-        </div>
-      </div>`;
-    document.body.removeChild(host);
-    return out;
-  }
-
-  let low = minFont, high = baseFont, best = baseFont;
-  for (let iter = 0; iter < 8; iter++) {
-    const mid = Math.floor((low + high) / 2);
-    host.style.fontSize = `${mid}px`;
-    need = inner.scrollHeight;
-
-    if (need <= maxHeight) {
-      best = mid;
-      high = mid - 1;
-    } else {
-      low = mid + 1;
-    }
-  }
-
-  // final check
-  host.style.fontSize = `${best}px`;
-  need = inner.scrollHeight;
-
-  // Return reflowed HTML with final font size applied
-  const finalHtml = `
-    <div style="font-size:${best}px; line-height:${lineHeight};">
-      ${html}
-    </div>
-  `;
-
-  document.body.removeChild(host);
-  // If abhi bhi thoda overflow ho, last resort small scale
-  if (typeof document !== "undefined") {
-    // Quick measure again to get exact height for last-micro scale
-    const probe = document.createElement("div");
-    probe.style.cssText = `
-      position:fixed; left:-99999px; top:0; width:${width}px; visibility:hidden;
-    `;
-    probe.innerHTML = finalHtml;
-    document.body.appendChild(probe);
-    const h = probe.scrollHeight;
-    document.body.removeChild(probe);
-
-    if (h > maxHeight) {
-      const s = Math.min(1, maxHeight / h);
-      return `
-        <div style="height:${maxHeight}px; overflow:hidden; position:relative;">
-          <div style="transform:scale(${s}); transform-origin: top left; width:${width}px;">
-            ${finalHtml}
-          </div>
-        </div>
-      `;
-    }
-  }
-  return finalHtml;
-}
-
 
 function bookToPagesWithTheme(book, theme) {
   const tempPages = [];
@@ -1171,8 +639,8 @@ function bookToPagesWithTheme(book, theme) {
   const accent = theme?.accent || "#2563eb";
   const accent2 = theme?.accent2 || "#60a5fa";
   const hasBgImg = !!theme?.page_bg_image;
-  const blockBg = hasBgImg ? "transparent" : page_bg;
-  const tableBg = hasBgImg ? "transparent" : page_bg;
+  const blockBg = hasBgImg ? "transparent" : page_bg;               
+  const tableBg = hasBgImg ? "transparent" : page_bg;             
   const thBg = hasBgImg ? "transparent" : "rgba(37,99,235,.06)";
 
 
@@ -1184,91 +652,6 @@ function bookToPagesWithTheme(book, theme) {
   const chipShadow = hasBgImg ? "none" : "0 2px 8px rgba(0,0,0,.03)";
   const badgeBg = hasBgImg ? "transparent" : (accent || text);
   const badgeTxt = hasBgImg ? text : "#fff";
-
-  const PAGE_W = 260;
-  const SCALE = PAGE_W / 794;
-  const px = (n) => Math.round(n * SCALE)
-
-  const getContentBox = () => {
-    try {
-      const { width, height } = measureA4ContentBox();
-      const TARGET_CONTENT_WIDTH = 650; 
-      const finalWidth = Math.min(TARGET_CONTENT_WIDTH, Math.max(600, width || 770));
-      return { width: finalWidth, height: Math.max(600, height || 940) };
-    } catch {
-      return { width: 680, height: 940 };
-    }
-  };
-
-
-  function wrapPage(bodyHtml, ctx = {}) {
-    const { width, height } = getContentBox();
-    const fitted = autoFitHtmlToHeight(bodyHtml, {
-      width,
-      maxHeight: height,
-      baseFont: DOC_FONT,
-      lineHeight: DOC_LINE_HEIGHT,
-      minScale: 0.85,
-      minFont: 12,
-    });
-
-    const metaProbe = `
-    <span style="display:none"
-      data-unit="${_escapeHtml(ctx.unit || "")}"
-      data-class="${_escapeHtml(className)}"
-      data-title="${_escapeHtml(ctx.title || "")}">
-    </span>
-  `;
-
-    const full = `
-    <div class="tbm-page" style="position:relative;background-color:${page_bg};color:${text};margin:0;padding:0">
-      <div class="tbm-body" style="padding:16px 18px;line-height:normal;font-size:inherit">
-        ${metaProbe}
-        ${fitted}
-      </div>
-    </div>
-  `.trim();
-    tempPages.push(full);
-  }
-
-
-  function wrapAuto(rawBodyHtml, ctx = {}) {
-    const { width, height } = getContentBox();
-
-    if (USE_WORD_PAGINATION) {
-      const chunks = splitIntoWordPages(rawBodyHtml, WORDS_PER_PAGE);
-      if (!chunks.length) { wrapPage("<div></div>", ctx); return; }
-
-      chunks.forEach((chunkHtml) => {
-        const overflow = willOverflow(chunkHtml, {
-          width,
-          maxHeight: height,
-          baseFont: DOC_FONT,
-          lineHeight: DOC_LINE_HEIGHT,
-        });
-
-        if (!overflow) {
-          wrapPage(chunkHtml, ctx);
-          return;
-        }
-
-
-
-      });
-
-      return;
-    }
-
-    const chunks = paginateHTMLIntoA4(rawBodyHtml, {
-      width,
-      maxHeight: Math.max(0, height - 20),
-      fontSize: DOC_FONT,
-      lineHeight: DOC_LINE_HEIGHT,
-    });
-    if (!chunks.length) { wrapPage("<div></div>", ctx); return; }
-    chunks.forEach((chunk) => wrapPage(chunk, ctx));
-  }
-
 
 
 
@@ -1350,9 +733,9 @@ function bookToPagesWithTheme(book, theme) {
           const num = `${ui + 1}.${li + 1}`;
           const title = l.title || `Lesson ${li + 1}`;
           return `
-          <span style="${chipBase}">
-          <span style="${chipNum}">${num}</span>
-             <span style="${chipTitle}">${_escapeHtml(title)}</span>
+      <span style="${chipBase}">
+  <span style="${chipNum}">${num}</span>
+  <span style="${chipTitle}">${_escapeHtml(title)}</span>
 </span>
 
       `;
@@ -1453,7 +836,7 @@ function bookToPagesWithTheme(book, theme) {
   </div>
 `;
 
-  wrapAuto(contentsBody, { unit: "Contents" });
+  wrap(contentsBody, { unit: "Contents" });
 
   units.forEach((u, ui) => {
     const uTitle = u.title || `Unit ${ui + 1}`;
@@ -1530,40 +913,41 @@ function bookToPagesWithTheme(book, theme) {
   </div>`,
     ].join("\n\n");
 
-    wrapAuto(unitHeroBody, { unit: uTitle });
+    wrap(unitHeroBody, { unit: uTitle });
 
-    for (let li = 0; li < (u.lessons || []).length; li++) {
-      const l = u.lessons[li];
+    (u.lessons || []).forEach((l, li) => {
       const lTitle = l.title || `Lesson ${li + 1}`;
       const lPages = l.number_of_pages ?? "—";
       const blocks = blocksFromLesson(l);
 
       if (blocks.length) {
-        for (let bi = 0; bi < blocks.length; bi++) {
-          const b = blocks[bi];
-
+        blocks.forEach((b, bi) => {
           const titleTop =
             bi === 0
-              ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
-             <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
-              : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(lTitle)} — Page ${bi + 1}</h3>`;
+              ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(
+                uTitle
+              )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
+       <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
+              : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(
+                lTitle
+              )} — Page ${bi + 1}</h3>`;
 
           const safeHtml = stripScripts(b);
-          const body = `${titleTop}
-        <div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
 
-          wrapAuto(body, { unit: uTitle, title: lTitle });
-        }
+          const body = `${titleTop}
+  <div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
+          wrap(body, { unit: uTitle, title: lTitle });
+        });
       } else {
         const body = `
-      <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
-      <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
-      <div style="color:${text}"><em>No content available yet.</em></div>`;
-
-        wrapAuto(body, { unit: uTitle, title: lTitle });
+          <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(
+          uTitle
+        )} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
+          <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
+          <div style="color:${text}"><em>No content available yet.</em></div>`;
+        wrap(body, { unit: uTitle, title: lTitle });
       }
-    }
-
+    });
   });
 
   const total = tempPages.length;
@@ -1571,8 +955,6 @@ function bookToPagesWithTheme(book, theme) {
     html.replace(/\{\{\s*total\s*\}\}/g, String(total))
   );
 }
-
-
 /* ===========================
    Theme Panel (+ Smart Background generator)
 =========================== */
@@ -1992,7 +1374,7 @@ function ThemePanel({
           accept="image/*"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file && onPickImage) onPickImage(file);
+            if (file && onPickImage) onPickImage(file); 
           }}
           style={{
             position: "absolute",
@@ -2032,7 +1414,7 @@ function ThemePanel({
 
         <button
           type="button"
-          onClick={onSaveCover}
+          onClick={onSaveCover}                  
           disabled={!coverFile || savingCover}
           style={{
             height: 36,
@@ -2554,41 +1936,47 @@ function EditorPanel({ onClose }) {
   }
 
   function cmd(command, value = null) {
-    try {
-      const sel = window.getSelection && window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        if (lastRangeRef.current) {
-          try {
-            sel.addRange(lastRangeRef.current);
-          } catch { }
-        }
-      }
-
-      const prevY = window.scrollY || document.documentElement.scrollTop || 0;
-
-      document.execCommand(command, false, value);
-
-      const target =
-        lastEditableElRef.current ||
-        document.activeElement?.closest?.('[data-editable="true"]') ||
-        document.querySelector('[data-editable="true"]');
-
-      if (target && target.focus) {
+  try {
+    // 1) Restore last saved selection if available
+    const sel = window.getSelection && window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      if (lastRangeRef.current) {
         try {
-          target.focus({ preventScroll: true });
-        } catch {
-          target.focus();
-        }
+          sel.addRange(lastRangeRef.current);
+        } catch {}
       }
+    }
 
-      if ((window.scrollY || document.documentElement.scrollTop || 0) !== prevY) {
-        window.scrollTo({ top: prevY, left: 0, behavior: "instant" in window ? "instant" : "auto" });
+    // 2) Freeze current scroll position
+    const prevY = window.scrollY || document.documentElement.scrollTop || 0;
+
+    // 3) Exec the command
+    document.execCommand(command, false, value);
+
+    // 4) Focus the *same* editable root without scrolling
+    const target =
+      lastEditableElRef.current ||
+      document.activeElement?.closest?.('[data-editable="true"]') ||
+      document.querySelector('[data-editable="true"]'); // fallback only
+
+    if (target && target.focus) {
+      try {
+        target.focus({ preventScroll: true });
+      } catch {
+        target.focus();
       }
+    }
 
-      saveCurrentRangeIfEditable();
-    } catch { }
-  }
+    // 5) Restore scroll position (belt & suspenders)
+    if ((window.scrollY || document.documentElement.scrollTop || 0) !== prevY) {
+      window.scrollTo({ top: prevY, left: 0, behavior: "instant" in window ? "instant" : "auto" });
+    }
+
+    // 6) Save the latest selection again
+    saveCurrentRangeIfEditable();
+  } catch {}
+}
 
 
   function makeLink() {
@@ -2611,81 +1999,26 @@ function EditorPanel({ onClose }) {
     cmd("hiliteColor", e.target.value);
   }
 
-  const TBM_BACKEND_BASE = "https://tbmplus-backend.ultimeet.io";
-  const PRESIGN_PATH = "/api/get_presigned_url/";
-  const S3_PUBLIC_BASE = "https://tbm-plus.s3.amazonaws.com";
-
-  function s3PublicUrlFromKey(key = "") {
-    return `${S3_PUBLIC_BASE}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
-  }
-
-  async function getPresignedUrl({ fileName, fileType, folder = "internet_images" }) {
-    const url = `${TBM_BACKEND_BASE}${PRESIGN_PATH}`;
-    const body = {
-      file_name: fileName,
-      file_type: fileType || "application/image",
-      operation: "upload",
-      folder
-    };
-
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!resp.ok) {
-      const t = await resp.text().catch(() => "");
-      throw new Error(`Presign failed [${resp.status}]: ${t || "unknown error"}`);
-    }
-
-    const json = await resp.json();
-    if (!json?.success || !json?.data?.presigned_url || !json?.data?.s3_key) {
-      throw new Error("Presign response missing fields.");
-    }
-
-    return { presignedUrl: json.data.presigned_url, s3Key: json.data.s3_key };
-  }
-
-  async function putToS3(presignedUrl, file) {
-    const resp = await fetch(presignedUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-      },
-      body: file,
-    });
-    if (!resp.ok) {
-      const t = await resp.text().catch(() => "");
-      throw new Error(`S3 upload failed [${resp.status}]: ${t || "unknown error"}`);
-    }
-  }
-
-  async function insertImageFromFile(f) {
+  function insertImageFromFile(f) {
     const editable =
       lastEditableElRef.current ||
       document.activeElement?.closest?.('[data-editable="true"]');
-    if (!editable || !f) return;
+    if (!editable) return;
 
-    const blobUrl = URL.createObjectURL(f);
-    setObjectUrls((arr) => [...arr, blobUrl]);
-
-    const tempId = `tbm-up-${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
+    const url = URL.createObjectURL(f);
+    setObjectUrls((arr) => [...arr, url]);
 
     const html =
-      `<img id="${tempId}" src="${blobUrl}" class="tbm-img" ` +
-      `data-uploading="true" ` +
-      `style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;opacity:.75;outline:2px dashed #94a3b8;outline-offset:4px;" />`;
+      `<img src="${url}" class="tbm-img" ` +
+      `style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;" />`;
 
     editable.focus();
     const sel = window.getSelection();
-    sel?.removeAllRanges();
+    sel.removeAllRanges();
 
     if (lastRangeRef.current) {
       try {
-        sel?.addRange(lastRangeRef.current);
+        sel.addRange(lastRangeRef.current);
       } catch {
         placeCaretAtEnd(editable);
       }
@@ -2701,62 +2034,17 @@ function EditorPanel({ onClose }) {
 
     editable.focus();
     saveCurrentRangeIfEditable();
-
-    const tempImg = document.getElementById(tempId);
-    if (!tempImg) {
-      console.warn("Temp image element not found; leaving blob URL.");
-      return;
-    }
-
-    try {
-      const { presignedUrl, s3Key } = await getPresignedUrl({
-        fileName: f.name || "image",
-        fileType: f.type || "application/image",
-        folder: "internet_images",
-      });
-
-      await putToS3(presignedUrl, f);
-
-      const finalUrl = s3PublicUrlFromKey(s3Key);
-      tempImg.src = finalUrl;
-      tempImg.style.opacity = "1";
-      tempImg.style.outline = "none";
-      tempImg.removeAttribute("id");
-      tempImg.removeAttribute("data-uploading");
-      tempImg.dataset.s3Key = s3Key;
-      tempImg.dataset.srcOriginal = finalUrl;
-
-      try {
-        URL.revokeObjectURL(blobUrl);
-      } catch { }
-
-    } catch (err) {
-      console.error("Image upload pipeline failed:", err);
-      tempImg.style.opacity = "1";
-      tempImg.style.outline = "2px solid #ef4444";
-      tempImg.title = `Upload failed: ${err?.message || err}`;
-
-    } finally {
-      saveCurrentRangeIfEditable();
-    }
   }
-
-  async function onFileChange(e) {
-    const f = e.target.files && e.target.files[0];
-    if (f) {
-      try {
-        await insertImageFromFile(f);
-      } finally {
-        e.target.value = "";
-      }
-    }
-  }
-
 
   function onPickImageClick() {
     if (fileRef.current) fileRef.current.click();
   }
-
+  function onFileChange(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    insertImageFromFile(f);
+    e.target.value = "";
+  }
 
   function beginResize(dir, e) {
     if (!selectedImg) return;
@@ -3111,11 +2399,10 @@ function EditorPanel({ onClose }) {
     </aside>
   );
 }
-
 function DocView({
   pages,
   fontSize = 16,
-  deviceDimensions = { width: 2480, },
+  deviceDimensions = { width: 720, height: 520 },
   theme = null,
   onPageInView = () => { },
   editable = false,
@@ -3126,17 +2413,9 @@ function DocView({
   onSelectPage = () => { },
   bgDisabledPages = new Set(),
   collectEditedHTMLRef,
-  showFooter = true,
 }) {
-  const A4_W = 2480;
-  const A4_H = 3508;
-  const A4_RATIO = A4_H / A4_W;
-
-  const PAGE_W = deviceDimensions.width || A4_W;
-  const PAGE_H = Math.round(PAGE_W * A4_RATIO);
-
-  const SCALE = PAGE_W / 794;
-  const px = (n) => Math.round(n * SCALE);
+  const pageWidth = Math.min(deviceDimensions.width, 860);
+  const pageMinHeight = Math.max(deviceDimensions.height, 980);
   const contentRefs = React.useRef([]);
   contentRefs.current = [];
   const pageBg = theme?.page_bg ?? "#ffffff";
@@ -3147,17 +2426,6 @@ function DocView({
   const headHTML = theme?.header || "";
   const footHTML = theme?.footer || "";
   const bgImg = theme?.page_bg_image || null;
-
-  const HEADER_STRIPS = px(theme?.accent ? 4 : 0) + px(theme?.accent2 ? 4 : 0);
-  const FOOTER_STRIPS = showFooter ? (px(theme?.accent ? 4 : 0) + px(theme?.accent2 ? 4 : 0)) : 0;
-  const HEADER_BAR = px(40);
-  const FOOTER_BAR = showFooter ? px(40) : 0;
-  const CONTENT_VPAD = px(18) * 2;
-  const CONTENT_HPAD = px(12) * 2;
-  const BOTTOM_GAP = px(0);
-  const INNER_W = PAGE_W - CONTENT_HPAD;
-  const INNER_H = PAGE_H - (HEADER_STRIPS + FOOTER_STRIPS + HEADER_BAR + FOOTER_BAR + CONTENT_VPAD + BOTTOM_GAP);
-
   function getMetaFromPage(html, key) {
     const m = new RegExp(`data-${key}="([^"]*)"`, "i").exec(String(html || ""));
     return m && m[1] ? m[1] : "";
@@ -3188,9 +2456,18 @@ function DocView({
     dirtyHandlersRef.current.delete(el);
   }
 
-
-  React.useEffect(() => {
+  function resetPageFromSource(idx) {
+    const el = contentRefs.current[idx];
+    if (!el) return;
+    dirtyRef.current.delete(idx);
+    hydratedOnceRef.current.delete(idx);
+    const nextHtml = markdownToHtml(pages[idx] || "");
+    if (el.innerHTML !== nextHtml) el.innerHTML = nextHtml;
+    hydratedOnceRef.current.add(idx);
+  }
+    React.useEffect(() => {
     if (!pages?.length) return;
+    // While editing, freeze auto page-detection to avoid scroll jumps.
     const opts = { root: null, rootMargin: "0px 0px -50% 0px", threshold: [0.33, 0.66, 1] };
     const io = new IntersectionObserver((entries) => {
       if (editable) return; // <-- key guard
@@ -3274,19 +2551,14 @@ function DocView({
 
       {bgImg ? (
         <style>{`
-          .doc-sheet .tbm-page { background-color: transparent !important; }
-          .doc-sheet .tbm-body img {
-    width: 100%;
-    height: 480px;
-    object-fit: cover; /* ya 'contain' as per need */
-  }
-
-        `}</style>
+        .doc-sheet .tbm-page { background-color: transparent !important; }
+        .doc-sheet .tbm-body { background-color: transparent !important; }
+      `}</style>
       ) : null}
       {imageUrl ? (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
           <div style={{
-            width: PAGE_W,
+            width: pageWidth,
             aspectRatio: "210 / 297",
             border: "1px solid #e5e7eb",
             borderRadius: 12,
@@ -3323,9 +2595,8 @@ function DocView({
             data-page={i + 1}
             ref={(el) => (pageRefs.current[i] = el)}
             style={{
-              width: PAGE_W,
-              height: PAGE_H,
-              boxSizing: "border-box",
+              width: pageWidth,
+              minHeight: pageMinHeight,
               backgroundColor: (theme?.page_bg_image ? "transparent" : pageBg),
               outline: editable && selectedPage === i + 1 ? "2px solid #2563eb" : "none",
               outlineOffset: 0,
@@ -3405,8 +2676,7 @@ function DocView({
               contentEditable={editable}
               suppressContentEditableWarning
               style={{
-                height: INNER_H,        // ⬅️ exactly the usable height
-                overflow: "hidden",
+                flex: 1,
                 padding: "18px 12px",
                 fontSize,
                 lineHeight: 1.7,
@@ -3432,59 +2702,77 @@ function DocView({
               {!editable ? <TextFormat data={page} /> : null}
             </div>
 
-            <div style={{ height: BOTTOM_GAP, flex: "0 0 auto" }} />
-            {showFooter ? (
-              <div style={{ display: "flex", flexDirection: "column", backgroundColor: pageBg }}>
-                {footHTML ? (
-                  <div style={{ overflow: "hidden", lineHeight: 0 }}
-                    dangerouslySetInnerHTML={{ __html: renderTemplate(footHTML, { page: i + 1, total: pages.length, unit: getMetaFromPage(page, "unit"), className: getMetaFromPage(page, "class"), date: new Date().toLocaleDateString(), }) }} />
-                ) : (
-                  <div style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "8px 14px", borderTop: "1px solid #e5e7eb",
-                    color: textCol, backgroundColor: bgImg ? "transparent" : pageBg,
-                    fontSize: 12, fontWeight: 600
-                  }}>
-                    <span>{getMetaFromPage(page, "unit") || "—"}</span>
-                    <span>Page {i + 1} / {pages.length}</span>
-                    <span>{getMetaFromPage(page, "class") || "—"}</span>
-                  </div>
-                )}
-                {accent2 ? <div style={{ height: 4, background: accent2 }} /> : null}
-                {accent ? <div style={{ height: 4, background: accent }} /> : null}
-              </div>
-            ) : null}
+
+            <div style={{ display: "flex", flexDirection: "column", backgroundColor: pageBg }}>
+              {footHTML ? (
+                <div
+                  style={{ overflow: "hidden", lineHeight: 0 }}
+                  dangerouslySetInnerHTML={{
+                    __html: renderTemplate(footHTML, {
+                      page: i + 1,
+                      total: pages.length,
+                      unit: getMetaFromPage(page, "unit"),
+                      className: getMetaFromPage(page, "class"),
+                      date: new Date().toLocaleDateString(),
+                    }),
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "8px 14px",
+                    borderTop: "1px solid #e5e7eb",
+                    color: textCol,
+                    backgroundColor: bgImg ? "transparent" : pageBg,
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>{getMetaFromPage(page, "unit") || "—"}</span>
+                  <span>
+                    Page {i + 1} / {pages.length}
+                  </span>
+                  <span>{getMetaFromPage(page, "class") || "—"}</span>
+                </div>
+              )}
+
+              {accent2 ? <div style={{ height: 4, background: accent2 }} /> : null}
+              {accent ? <div style={{ height: 4, background: accent }} /> : null}
+            </div>
           </div>
         ))}
       </div>
 
       <style>{`
-  [data-editable="true"] img, .doc-sheet img { cursor: zoom-in; }
+[data-editable="true"] img, .doc-sheet img { cursor: zoom-in; }
 
-  @media (max-width: 768px) {
-    div[data-docview] { padding: 8px 0 16px; }
+@media (max-width: 768px) {
+  div[data-docview] { padding: 8px 0 16px; }
+}
+  .doc-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+@media print {
+  body { background: #fff !important; }
+  * { box-shadow: none !important; }
+  .doc-sheet {
+    page-break-after: always;
+    border: none !important;
+    border-radius: 0 !important;
+    width: auto !important;
+    min-height: auto !important;
+    box-shadow: none !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
   }
-    .doc-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @media print {
-    body { background: #fff !important; }
-    * { box-shadow: none !important; }
-    .doc-sheet {
-      page-break-after: always;
-      border: none !important;
-      border-radius: 0 !important;
-      width: auto !important;
-      min-height: auto !important;
-      box-shadow: none !important;
-      background-color: #ffffff !important;
-      color: #000000 !important;
-    }
-  }
-  `}</style>
+}
+`}</style>
     </div>
   );
 }
 /* ===========================
-  Page Component
+   Page Component
 =========================== */
 export default function BookDetailsPage() {
   const { id } = useParams();
@@ -3513,309 +2801,6 @@ export default function BookDetailsPage() {
   const [primaryContentId, setPrimaryContentId] = React.useState(null);
 
   const [topImageUrl, setTopImageUrl] = React.useState("");
-
-
-
-  // ---- state ----
-  const [exporting, setExporting] = React.useState(false);
-  const [exportNote, setExportNote] = React.useState("");
-  const [fastMode, setFastMode] = React.useState(true);
-  const ULTRA_FAST = true;
-  const JPEG_QUALITY = ULTRA_FAST ? 0.78 : (fastMode ? 0.82 : 0.92);
-
-
-  function freezeForExport() { document.body.classList.add("tbm-printing", "tbm-exporting"); try { window.scrollTo({ top: 0, behavior: "instant" }); } catch { } }
-  function unfreezeAfterExport() { document.body.classList.remove("tbm-printing", "tbm-exporting"); }
-
-  async function waitForImages(root) {
-    const imgs = Array.from(root.querySelectorAll("img"));
-    await Promise.all(imgs.map(img =>
-      (img.complete && img.naturalWidth > 0) ? Promise.resolve()
-        : new Promise(res => { const done = () => res(); img.addEventListener("load", done, { once: true }); img.addEventListener("error", done, { once: true }); })
-    ));
-  }
-
-  async function inlineExternalAssets(root) {
-    const revokers = [];
-    const imgs = Array.from(root.querySelectorAll("img"));
-    await Promise.all(imgs.map(async img => {
-      const src = img.getAttribute("src");
-      if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
-      try {
-        const r = await fetch(src, { mode: "cors", credentials: "omit", cache: "force-cache" });
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        img.setAttribute("data-old-src", src);
-        img.setAttribute("crossorigin", "anonymous");
-        img.src = url;
-        revokers.push(() => { try { URL.revokeObjectURL(url); } catch { } const old = img.getAttribute("data-old-src"); if (old) { img.src = old; img.removeAttribute("data-old-src"); } });
-      } catch {
-        if (!img.getAttribute("crossorigin")) img.setAttribute("crossorigin", "anonymous");
-      }
-    }));
-    const nodes = Array.from(root.querySelectorAll("*")).filter(n => {
-      const bg = getComputedStyle(n).backgroundImage || "";
-      return bg.startsWith('url("http') || bg.startsWith("url('http");
-    });
-    await Promise.all(nodes.map(async node => {
-      const bg = getComputedStyle(node).backgroundImage;
-      const m = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/i.exec(bg);
-      if (!m) return;
-      try {
-        const r = await fetch(m[2], { mode: "cors", credentials: "omit", cache: "force-cache" });
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        const blob = await r.blob();
-        const objUrl = URL.createObjectURL(blob);
-        const prev = node.style.backgroundImage;
-        node.setAttribute("data-old-bg", prev || "");
-        node.style.backgroundImage = `url("${objUrl}")`;
-        revokers.push(() => { try { URL.revokeObjectURL(objUrl); } catch { } const old = node.getAttribute("data-old-bg"); if (old != null) { node.style.backgroundImage = old; node.removeAttribute("data-old-bg"); } });
-      } catch { }
-    }));
-    return () => revokers.forEach(fn => fn());
-  }
-
-  let _libOnce;
-  function loadScriptOnce(url) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = url; s.async = true; s.crossOrigin = "anonymous"; s.onload = () => res(true); s.onerror = () => rej(new Error("load failed: " + url)); document.head.appendChild(s); }); }
-  async function ensureCanvasAndPdfLibs() {
-    if (_libOnce) return _libOnce;
-    _libOnce = (async () => {
-      if (window.html2canvas && window.jspdf?.jsPDF) return;
-      const plans = [
-        async () => { await loadScriptOnce("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"); await loadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"); },
-        async () => { await loadScriptOnce("https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"); await loadScriptOnce("https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"); },
-        async () => { await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"); await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"); },
-      ];
-      let err = null; for (const p of plans) { try { await p(); if (window.html2canvas && window.jspdf?.jsPDF) return; } catch (e) { err = e; } }
-      throw err || new Error("Libraries could not be loaded");
-    })();
-    return _libOnce;
-  }
-  const TINY_TRANSPARENT_PNG =
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA" +
-    "AAC0lEQVR42mP8/x8AAwMCAO4i+o4AAAAASUVORK5CYII=";
-
-  function isLikelyValidSrc(src = "") {
-    const s = String(src || "").trim();
-    if (!s) return false;
-    if (/^data:image\//i.test(s)) return true;
-    if (/^blob:/i.test(s)) return true;
-    if (/^https?:\/\//i.test(s) && !/[<>]/.test(s)) return true;
-    return false;
-  }
-
-  function fixWeirdImgSrc(src = "") {
-    let s = String(src || "").trim();
-    if (/[<>]/.test(s) || /%3C/i.test(s) || /%3E/i.test(s)) return null;
-    s = s.replace(/\s+/g, "");
-    return isLikelyValidSrc(s) ? s : null;
-  }
-  async function sanitizeImagesForExport(root) {
-    const imgs = Array.from(root.querySelectorAll("img"));
-    let fixed = 0, replaced = 0;
-    imgs.forEach(img => {
-      const raw = img.getAttribute("src") || "";
-      const clean = fixWeirdImgSrc(raw);
-      if (!clean) {
-        img.setAttribute("data-old-src", raw);
-        img.src = TINY_TRANSPARENT_PNG;
-        replaced++;
-        return;
-      }
-      if (clean !== raw) {
-        img.setAttribute("data-old-src", raw);
-        img.src = clean;
-        fixed++;
-      }
-      if (!img.getAttribute("crossorigin")) img.setAttribute("crossorigin", "anonymous");
-      img.decoding = "sync";
-      img.loading = "eager";
-      img.referrerPolicy = "no-referrer";
-    });
-    console.info(`[EXPORT] image sanitize → fixed=${fixed}, placeholders=${replaced}, total=${imgs.length}`);
-  }
-  function ms(n) { return `${Math.round(n)}ms`; }
-
-
-  const yieldNow = () => new Promise(r => setTimeout(r, 0));
-  const yieldIdle = () =>
-    new Promise(r => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 200 }) : setTimeout(r, 16)));
-
-  function ms(n) { return `${Math.round(n)}ms`; }
-
-  function ensureStagingRoot() {
-    let root = document.getElementById("tbm-export-staging");
-    if (!root) {
-      root = document.createElement("div");
-      root.id = "tbm-export-staging";
-      Object.assign(root.style, {
-        position: "fixed",
-        left: "-99999px",
-        top: "0",
-        width: "794px",
-        minHeight: "1123px",
-        overflow: "hidden",
-        zIndex: "-1",
-        background: "transparent",
-        contain: "content"
-      });
-      document.body.appendChild(root);
-    }
-    return root;
-  }
-
-  function makeIsolatedClone(sourceEl) {
-    const staging = ensureStagingRoot();
-    staging.innerHTML = "";
-    const clone = sourceEl.cloneNode(true);
-    clone.classList.add("tbm-exporting");
-    staging.appendChild(clone);
-    return { staging, clone };
-  }
-
-  async function withWatchdog(promiseFactory, timeoutMs) {
-    let timer;
-    const timeout = new Promise((_, rej) => {
-      timer = setTimeout(() => rej(new Error("timeout")), timeoutMs);
-    });
-    try {
-      const res = await Promise.race([promiseFactory(), timeout]);
-      clearTimeout(timer);
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      throw e;
-    }
-  }
-
-  async function handleExportPDFDirect() {
-    if (exporting) return;
-    const root = document.querySelector('[data-docview]');
-    if (!root) return alert("Document not found");
-
-    setExporting(true);
-    setExportNote("Loading export libraries…");
-    const tLibs = performance.now();
-    await ensureCanvasAndPdfLibs();
-    console.log(`[EXPORT] libs ready in ${ms(performance.now() - tLibs)}`);
-
-    const html2canvas = window.html2canvas;
-    const jsPDF = window.jspdf.jsPDF;
-
-    const pagesEls = Array.from(root.querySelectorAll('.doc-sheet'));
-    if (!pagesEls.length) { setExporting(false); return alert("No pages found"); }
-
-    freezeForExport();
-    await sanitizeImagesForExport(root);
-    const ULTRA_FAST = true;
-    const restore = ULTRA_FAST ? null : await inlineExternalAssets(root);
-
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-    const pageWmm = pdf.internal.pageSize.getWidth();
-    const pageHmm = pdf.internal.pageSize.getHeight();
-
-    const BASE = {
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: null,
-      letterRendering: false,
-      logging: false,
-      scrollX: 0, scrollY: 0,
-      removeContainer: true,
-      onclone: (doc) => {
-        doc.body.classList.add("tbm-printing", "tbm-exporting");
-        try { sanitizeImagesForExport(doc); } catch { }
-      }
-    };
-
-    const SCALES = [1.0, 0.9, 0.8, 0.7];
-
-    const PAGE_TIMEOUT_MS = 4500;
-
-    const total = pagesEls.length;
-    const t0 = performance.now();
-    const times = [];
-
-    for (let i = 0; i < total; i++) {
-      const start = performance.now();
-      console.log(`[EXPORT] ▶ page ${i + 1}/${total}`);
-
-      setExportNote(`Rendering page ${i + 1} / ${total}…`);
-
-      await yieldNow();
-
-      const { staging, clone } = makeIsolatedClone(pagesEls[i]);
-
-
-      await waitForImages(clone);
-
-      let canvas = null;
-      let lastErr = null;
-
-      for (const scale of SCALES) {
-        try {
-          canvas = await withWatchdog(
-            () => html2canvas(clone, { ...BASE, scale }),
-            PAGE_TIMEOUT_MS
-          );
-          console.log(`[EXPORT] page ${i + 1} rendered at scale=${scale}`);
-          break;
-        } catch (e) {
-          lastErr = e;
-          console.warn(`[EXPORT] page ${i + 1} retry with lower scale; reason=${e.message}`);
-
-          await yieldIdle();
-        }
-      }
-
-      if (!canvas) {
-        console.error(`[EXPORT] page ${i + 1} failed, inserting blank page.`);
-        const tmp = document.createElement("canvas");
-        tmp.width = 794; tmp.height = 1123;
-        const ctx = tmp.getContext("2d");
-        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, tmp.width, tmp.height);
-        ctx.fillStyle = "#e11d48";
-        ctx.font = "16px sans-serif";
-        ctx.fillText("Page failed to render", 24, 36);
-        canvas = tmp;
-      }
-
-      const imgData = canvas.toDataURL("image/jpeg", 0.8);
-      if (i > 0) pdf.addPage();
-      pdf.addImage(imgData, "JPEG", 0, 0, pageWmm, pageHmm);
-
-      try { canvas.width = canvas.height = 0; } catch { }
-      try { staging.innerHTML = ""; } catch { }
-
-      const dt = performance.now() - start;
-      times.push(dt);
-      const avg = times.reduce((a, b) => a + b, 0) / times.length;
-      const left = total - (i + 1);
-      const eta = left * avg;
-      console.log(`[EXPORT] page ${i + 1}/${total}: ${ms(dt)} | avg ${ms(avg)} | ETA ${ms(eta)}`);
-      setExportNote(`Page ${i + 1}/${total} done • avg ${ms(avg)} • ETA ${ms(eta)}`);
-
-
-      await yieldIdle();
-    }
-
-    const filename = `${(book?.title || "book").replace(/[^\w\d\-]+/g, "_")}.pdf`;
-    const tSave = performance.now();
-    setExportNote("Finalizing…");
-    pdf.save(filename);
-    console.log(`[EXPORT] pdf.save took ${ms(performance.now() - tSave)}`);
-
-    const totalMs = performance.now() - t0;
-    console.log(`[EXPORT] ✅ DONE in ${ms(totalMs)} for ${total} pages`);
-
-    try { restore?.(); } catch { }
-    unfreezeAfterExport();
-    setExportNote("");
-    setExporting(false);
-  }
-
-
 
   const [apply, setApply] = React.useState({
     page_bg: true,
@@ -3907,37 +2892,8 @@ export default function BookDetailsPage() {
       }
       return url;
     });
-    setCoverFile(file);
+    setCoverFile(file);          
   }, []);
-
-
-
-
-
-  function _extractBody(html = "") {
-    const m = /<div\s+class=["']tbm-body["'][^>]*>([\s\S]*?)<\/div>/i.exec(String(html));
-    return m ? m[1] : "";
-  }
-
-  function _replaceBody(html = "", newInner = "") {
-    return String(html).replace(
-      /(<div\s+class=["']tbm-body["'][^>]*>)[\s\S]*?(<\/div>)/i,
-      (_, open, close) => `${open}${newInner}${close}`
-    );
-  }
-
-  function splitPageHTMLByHeight(pageHtml, { width, height, fontSize = 16, lineHeight = 1.7 }) {
-    const bodyInner = _extractBody(pageHtml);
-    const chunks = paginateHTMLIntoA4(bodyInner, {
-      width,
-      maxHeight: height,
-      fontSize: DOC_FONT,
-      lineHeight: DOC_LINE_HEIGHT,
-    });
-    if (!Array.isArray(chunks) || chunks.length <= 1) return [pageHtml];
-    return chunks.map(chunk => _replaceBody(pageHtml, chunk));
-  }
-
 
   const handlePickImageUrl = React.useCallback((url) => {
     setTopImageUrl((prev) => {
@@ -3946,87 +2902,15 @@ export default function BookDetailsPage() {
       }
       return url;
     });
-    setCoverFile(null);
+    setCoverFile(null);            
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   }, []);
 
-  const rawPages = React.useMemo(
+  const pages = React.useMemo(
     () => bookToPagesWithTheme(book, effectiveTheme),
     [book, effectiveTheme]
   );
 
-  const pages = React.useMemo(() => {
-    // A4 usable content box (header/footer हटाकर real body height)
-    const { width, height } = measureA4ContentBox();  // typically ~770 x ~940
-    const out = [];
-    for (const p of (rawPages || [])) {
-      const parts = splitPageHTMLByHeight(p, { width, height, fontSize: 16, lineHeight: 1.7 });
-      out.push(...parts);
-    }
-    return out;
-  }, [rawPages]);
-
-
-
-  // ⬇️ helper: page ke .tbm-body ka innerHTML nikaalo
-  function extractBodyHTML(pageHtml = "") {
-    const tmp = document.createElement("div");
-    tmp.innerHTML = String(pageHtml || "");
-    const el = tmp.querySelector(".tbm-body");
-    return el ? el.innerHTML : String(pageHtml || "");
-  }
-
-  // ⬇️ helper: plain text (tags hata ke)
-  function toPlainText(html = "") {
-    return String(html || "")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  // ⬇️ pages change hote hi console me print
-  React.useEffect(() => {
-    if (!Array.isArray(pages) || !pages.length) return;
-
-    console.groupCollapsed(`[TBM] Pages ready • total=${pages.length}`);
-
-    pages.forEach((html, idx) => {
-      // meta (tumhare readMeta already present hai upar)
-      const meta = readMeta ? readMeta(html) : {};
-      const unit = meta?.unit || "";
-      const title = meta?.title || "";
-
-      // body HTML + plain text
-      const bodyHTML = extractBodyHTML(html);
-      const bodyTEXT = toPlainText(bodyHTML);
-
-      console.groupCollapsed(
-        `Page ${idx + 1}/${pages.length}` +
-        (unit ? ` • unit: ${unit}` : "") +
-        (title ? ` • title: ${title}` : "")
-      );
-      console.log("HTML:", bodyHTML);    // pura body HTML
-      console.log("TEXT:", bodyTEXT);    // plain text (agar chaho to substring bhi le sakte ho)
-      console.groupEnd();
-    });
-
-    // quick overview table
-    const rows = pages.map((html, idx) => {
-      const meta = readMeta ? readMeta(html) : {};
-      const body = extractBodyHTML(html);
-      return {
-        page: idx + 1,
-        unit: meta?.unit || "",
-        title: meta?.title || "",
-        chars: toPlainText(body).length
-      };
-    });
-    console.table(rows);
-
-    console.groupEnd();
-  }, [pages]);
 
 
   React.useEffect(() => {
@@ -4047,7 +2931,7 @@ export default function BookDetailsPage() {
         console.log("book.theme_json.id:", B?.theme_json?.id);
         console.groupEnd();
         const all = collectAllContentIdsFromBook(B);
-        setContentIds(all);
+        setContentIds(all); 
         console.groupCollapsed("[CID] all content ids (payload)");
         console.table(all);
         console.groupEnd();
@@ -4058,7 +2942,7 @@ export default function BookDetailsPage() {
         setBook(null);
         setContentIds([]);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) setLoading(false); 
       }
     })();
 
@@ -4067,14 +2951,14 @@ export default function BookDetailsPage() {
 
 
   React.useEffect(() => {
-    userPickedRef.current = false;
+    userPickedRef.current = false;   
     setSelectedThemeKey("");
   }, [bookId]);
 
   React.useEffect(() => {
     const apiThemeId = book?.theme_json?.id ? String(book.theme_json.id).trim() : "";
     const available = themeKeys || [];
-    if (!available.length) return;
+    if (!available.length) return; 
 
     const matchKey = findKeyByThemeId(pageThemes, apiThemeId);
 
@@ -4174,7 +3058,7 @@ export default function BookDetailsPage() {
     return active;
   }, [groupedTOC, currentPage]);
 
-  React.useEffect(() => {
+    React.useEffect(() => {
     const id = activePointer?.firstPage ? `toc-${activePointer.firstPage}` : "";
     const el = id ? document.getElementById(id) : null;
     // Ensure we only scroll the TOC's own scroll container, not the whole page.
@@ -4207,8 +3091,8 @@ export default function BookDetailsPage() {
   };
 
   /* =========================
-    BOOK CONTENT SAVE HELPERS
-    ========================= */
+     BOOK CONTENT SAVE HELPERS
+     ========================= */
   function pickId(v) {
     if (v == null) return null;
     if (typeof v === "string" || typeof v === "number") return String(v);
@@ -4422,8 +3306,8 @@ export default function BookDetailsPage() {
   }
 
   /* ============
-    SAVE (PATCH)
-    ============ */
+     SAVE (PATCH)
+     ============ */
   function headersToObject(h) {
     const out = {};
     try { for (const [k, v] of h.entries()) out[k] = v; } catch { }
@@ -4542,7 +3426,7 @@ export default function BookDetailsPage() {
 
     console.log("[DIFF] Mismatched Content IDs:", changes.map(c => c.id));
 
-    const patchResults = [];
+    const patchResults = [];   
 
     const errors = [];
     for (const { id, payload } of changes) {
@@ -4554,17 +3438,17 @@ export default function BookDetailsPage() {
       console.log("payload (sent):", payload);
 
       try {
-        const url = joinUrl(ABS_API_BASE, path);
+        const url = joinUrl(ABS_API_BASE, path);     
         const resp = await requestWithLog(url, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          bodyObj: payload,
+          bodyObj: payload,    
         });
 
         const server = (resp && (resp.json ?? resp.text)) ?? null;
 
         console.log("[HTTP] meta:", {
-          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url
+          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url   
         });
 
         console.log("[PATCH] payload (sent):", payload);
@@ -4656,7 +3540,7 @@ export default function BookDetailsPage() {
       if (!resp.ok) throw new Error(`[${resp.status}] ${text || "Upload failed"}`);
 
       if (json && typeof json === "object") {
-        setBook((prev) => ({ ...(prev || {}), ...json }));
+        setBook((prev) => ({ ...(prev || {}), ...json })); 
       }
 
       alert("Cover saved ✅");
@@ -4689,30 +3573,6 @@ export default function BookDetailsPage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button
-              onClick={handleExportPDFDirect}
-              disabled={exporting}
-              className="no-print"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 8, height: 36,
-                borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 12px",
-                background: "#fff", color: "#0f172a", cursor: exporting ? "not-allowed" : "pointer", fontWeight: 600
-              }}
-              title={exporting ? exportNote || "Exporting…" : "Download as PDF"}
-            >
-              {exporting ? (
-                <span style={{
-                  width: 16, height: 16, border: "2px solid #94a3b8",
-                  borderTopColor: "#0f172a", borderRadius: "50%", display: "inline-block",
-                  animation: "tbmSpin 0.8s linear infinite"
-                }} />
-              ) : "⬇️"}
-              <span>{exporting ? (exportNote || "Exporting…") : "Download PDF"}</span>
-            </button>
-
-
-
-
             <button
               onClick={() => {
                 setShowThemePanel((s) => !s);
@@ -5046,7 +3906,7 @@ export default function BookDetailsPage() {
           >
             <DocView
               pages={pages}
-              fontSize={DOC_FONT}
+              fontSize={16}
               deviceDimensions={{ width: 720, height: 520 }}
               theme={effectiveTheme}
               onPageInView={setCurrentPage}
@@ -5062,29 +3922,6 @@ export default function BookDetailsPage() {
           </div>
         </div>
       </div>
-      <style jsx global>{`
-    /* A4 @ ~96dpi = 794 x 1123px */
-    .tbm-exporting .doc-sheet {
-      width: 794px !important;
-    }
-    .tbm-exporting .tbm-page,
-    .tbm-exporting .tbm-body {
-      width: 100% !important;
-      min-height: 100% !important;
-    }
-
-    /* Already suggested hardening for speed */
-    @keyframes tbmSpin { to { transform: rotate(360deg); } }
-    .tbm-exporting *, .tbm-printing *{
-      animation:none!important; transition:none!important;
-      box-shadow:none!important; filter:none!important; text-shadow:none!important; backdrop-filter:none!important;
-    }
-    .tbm-exporting aside{ display:none!important; } /* hide sidebar in export */
-    .tbm-exporting .doc-sheet,
-    .tbm-exporting .tbm-page,
-    .tbm-exporting .tbm-body{ background-image:none!important; }
-  `}</style>
-
     </div>
   );
 }
@@ -5093,12 +3930,12 @@ export default function BookDetailsPage() {
 
 
 function createWatermarkedBackgroundSVG({
-  imageUrl,
+  imageUrl,            
   text = "TBM+",
   opacity = 0.12,
-  gap = 220,
-  size = 56,
-  angle = -30,
+  gap = 220,             
+  size = 56,              
+  angle = -30,           
   fontFamily = "Inter,system-ui,Arial",
 }) {
   const W = 2480, H = 3508;
@@ -5125,4 +3962,3 @@ function createWatermarkedBackgroundSVG({
 
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
-
