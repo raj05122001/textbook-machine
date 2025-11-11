@@ -295,10 +295,8 @@
 
 
 
-
-
 "use client";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "katex/dist/katex.min.css";
 
 /* -------------------- basic decoders -------------------- */
@@ -372,7 +370,8 @@ export function markdownToHtml(src) {
   s = s.replace(/^[ \t]{0,3}(#{1,6})[ \t]+(.+?)\s*#*\s*$/gm, (_, H, t) => `<h${H.length}>${t}</h${H.length}>\n`);
   s = s.replace(
     /(^|\n)([^\n]+)\n[ \t]*(=+|-+)[ \t]*\n/g,
-    (_m, lead, title, bar) => `${lead}<h${bar.trim().startsWith("=") ? 1 : 2}>${title.trim()}</h${bar.trim().startsWith("=") ? 1 : 2}>\n`
+    (_m, lead, title, bar) =>
+      `${lead}<h${bar.trim().startsWith("=") ? 1 : 2}>${title.trim()}</h${bar.trim().startsWith("=") ? 1 : 2}>\n`
   );
 
   // blockquotes
@@ -430,7 +429,12 @@ export function markdownToHtml(src) {
     .split(/\n{2,}/)
     .map((block) => {
       const t = block.trim();
-      if (/^(<h\d|<ul>|<ol\b|<table|<thead|<tbody|<tr|<th\b|<td\b|<blockquote>|<hr>|<div\b|<span\b|<pre>|<img|<p>|<code>|\uE000TAG\d+\uE000)/.test(t)) return block;
+      if (
+        /^(<h\d|<ul>|<ol\b|<table|<thead|<tbody|<tr|<th\b|<td\b|<blockquote>|<hr>|<div\b|<span\b|<pre>|<img|<p>|<code>|\uE000TAG\d+\uE000)/.test(
+          t
+        )
+      )
+        return block;
       return `<p>${block.replace(/\n/g, "<br>")}</p>`;
     })
     .join("\n");
@@ -465,30 +469,30 @@ export function markdownToHtml(src) {
   return s;
 }
 
-/* -------- Make KaTeX happy: collapse doubled backslashes for commands only -------- */
+/* -------- Safer LaTeX normalization for KaTeX -------- */
 function normalizeLatexForKatex(tex) {
   if (!tex) return "";
   let s = String(tex);
 
-  // keep matrix row breaks: collapse 3+ backslashes to "\\"
-  s = s.replace(/\\{3,}(?=\s|$)/g, "\\\\");    // \\\ -> \\
-  // collapse runs before commands to a single backslash: \\\\int -> \int
-  s = s.replace(/\\+(?=[A-Za-z]+)/g, "\\");
-  // collapse runs before spacing tokens (\, \; \: \!)
-  s = s.replace(/\\+(?=[,;:!])/g, "\\");
-  // trim a stray trailing backslash
+  // If content came as \\frac, \\alpha etc, collapse command-leading runs to single backslash
+  s = s.replace(/\\+(?=[A-Za-z])/g, "\\");
+  s = s.replace(/\\+(?=[,;:!])/g, "\\"); // \, \; etc
+
+  // Keep matrix/line breaks: collapse 3+ to 2 backslashes, keep \\ as-is
+  s = s.replace(/\\{3,}(?=\s|$)/g, "\\\\");
+  // Trim a stray trailing backslash
   s = s.replace(/\\$/, "");
   return s;
 }
-
-
 
 /* -------------------- Component -------------------- */
 export default function TextFormat({ data }) {
   const html = useMemo(() => markdownToHtml(data), [data]);
   const [katex, setKatex] = useState(null);
   const rootRef = useRef(null);
+  const observerRef = useRef(null);
 
+  // Load KaTeX module once
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -498,22 +502,53 @@ export default function TextFormat({ data }) {
     return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
+  // Render math ASAP to avoid visible raw LaTeX on remounts
+  useLayoutEffect(() => {
     if (!katex || !rootRef.current) return;
 
-    // inline maths
-    rootRef.current.querySelectorAll(".math-inline").forEach((el) => {
-      const raw = el.textContent || "";
-      const tex = normalizeLatexForKatex(raw);
-      el.innerHTML = katex.renderToString(tex, { throwOnError: false, displayMode: false });
+    const renderMath = () => {
+      const root = rootRef.current;
+      if (!root) return;
+
+      const nodes = root.querySelectorAll(".math-inline, .math-block");
+      nodes.forEach((el) => {
+        if (el.getAttribute("data-katex-rendered") === "1") return; // already rendered
+
+        const raw = el.textContent || "";
+        const tex = normalizeLatexForKatex(raw);
+
+        try {
+          const isBlock = el.classList.contains("math-block");
+          el.innerHTML = katex.renderToString(tex, { throwOnError: false, displayMode: isBlock });
+          el.setAttribute("data-katex-rendered", "1");
+        } catch {
+          // leave raw if KaTeX fails
+        }
+      });
+    };
+
+    renderMath();
+
+    // Re-render if DOM under root gets replaced (route swaps, toggles, etc.)
+    const obs = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === "childList" || m.type === "subtree") {
+          // If we detect any unrendered math, render again
+          const anyRaw =
+            rootRef.current &&
+            rootRef.current.querySelector('.math-inline:not([data-katex-rendered]), .math-block:not([data-katex-rendered])');
+          if (anyRaw) renderMath();
+          break;
+        }
+      }
     });
 
-    // block maths
-    rootRef.current.querySelectorAll(".math-block").forEach((el) => {
-      const raw = el.textContent || "";
-      const tex = normalizeLatexForKatex(raw);
-      el.innerHTML = katex.renderToString(tex, { throwOnError: false, displayMode: true });
-    });
+    obs.observe(rootRef.current, { subtree: true, childList: true, characterData: false });
+    observerRef.current = obs;
+
+    return () => {
+      try { observerRef.current?.disconnect(); } catch {}
+    };
   }, [html, katex]);
 
   return (
@@ -565,4 +600,3 @@ export default function TextFormat({ data }) {
     </main>
   );
 }
-

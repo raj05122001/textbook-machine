@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import GeneratedPayloadModal from '@/components/GeneratedPayloadModal';
 import SuccessRow from "@/components/SuccessRow";
@@ -17,13 +17,29 @@ function TypingDots() {
 
 export function Step5Content({ isStreaming, processingStep, contentPhase, lessonProgress, contentJson }) {
   const [openPayload, setOpenPayload] = useState(null);
-  // stable ordering by first-seen time
-  const lessonsArr = Object.values(lessonProgress || {}).sort(
-    (a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0)
+
+  const norm = (s) => String(s || '').toLowerCase().trim().replace(/\s+/g, '_');
+
+  const lessonsArr = useMemo(
+    () => Object.values(lessonProgress || {}).sort(
+      (a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0)
+    ),
+    [lessonProgress]
   );
-  const done = lessonsArr.filter((l) => l.status === 'completed').length;
-  const failed = lessonsArr.filter((l) => l.status === 'failed').length;
-  const total = lessonsArr.length;
+
+  const { total, done, failed, started, active } = useMemo(() => {
+    let t = 0, d = 0, f = 0, s = 0, a = 0;
+    for (const r of lessonsArr) {
+      t += 1;
+      const st = norm(r?.status);
+      if (st === 'completed') d += 1;
+      else if (st === 'failed') f += 1;
+      else if (st === 'started') s += 1;
+
+      if (!['completed', 'failed', 'idle', ''].includes(st)) a += 1;
+    }
+    return { total: t, done: d, failed: f, started: s, active: a };
+  }, [lessonsArr]);
 
   const pillClass =
     contentPhase.status === 'completed'
@@ -33,6 +49,15 @@ export function Step5Content({ isStreaming, processingStep, contentPhase, lesson
         : contentPhase.status === 'started'
           ? 'bg-blue-100 text-blue-700'
           : 'bg-gray-100 text-gray-700';
+
+
+  const showSuccess =
+    contentPhase?.status === 'completed' &&
+    started === 0 &&
+    active === 0 &&
+    failed === 0 &&
+    (total === 0 || done === total) &&
+    Boolean((contentPhase?.message || '').trim());
 
   const SkeletonRow = () => (
     <div className="px-4 py-3">
@@ -51,7 +76,7 @@ export function Step5Content({ isStreaming, processingStep, contentPhase, lesson
         <p className="text-gray-600">Live updates via content websocket</p>
       </div>
 
-      {contentPhase.status === "completed" ? (
+      {showSuccess ? (
         <SuccessRow
           title="Dynamic Prompt ready!"
           subtitle={contentPhase.message || "Dynamic Prompt generation completed."}
@@ -86,7 +111,6 @@ export function Step5Content({ isStreaming, processingStep, contentPhase, lesson
                 {contentPhase.message || processingStep || (isStreaming ? 'Preparing…' : 'Ready')}
               </div>
 
-              {/* 👇 NEW: ETA line near the loader */}
               {isStreaming && (
                 <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
                   <Clock className="h-3.5 w-3.5" />
@@ -102,13 +126,16 @@ export function Step5Content({ isStreaming, processingStep, contentPhase, lesson
                       style={{ width: `${Math.round((done / Math.max(total, 1)) * 100)}%` }}
                     />
                   </div>
-                  <span className="text-xs text-gray-500">{done}/{total} done{failed ? ` • ${failed} failed` : ''}</span>
+                  <span className="text-xs text-gray-500">
+                    {done}/{total} done{failed ? ` • ${failed} failed` : ''}
+                  </span>
                 </div>
               )}
             </div>
           </div>
         </div>
       )}
+
       {/* Lesson progress */}
       <div className="w-full max-w-5xl mx-auto rounded-2xl border bg-white overflow-hidden">
         <div className="px-4 py-3 border-b bg-gray-50 font-semibold">Lesson progress</div>
@@ -118,13 +145,13 @@ export function Step5Content({ isStreaming, processingStep, contentPhase, lesson
           {lessonsArr.map((l, idx) => (
             <div key={idx} className="px-4 py-3 flex items-start gap-3">
               <div className={`mt-1 shrink-0 w-2 h-2 rounded-full
-                ${l.status === 'completed' ? 'bg-emerald-500' :
-                  l.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'}`} />
+                ${norm(l.status) === 'completed' ? 'bg-emerald-500' :
+                  norm(l.status) === 'failed' ? 'bg-red-500' : 'bg-blue-500'}`} />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-gray-900 truncate">{l.unit} — {l.lesson}</div>
-                <div className="text-sm text-gray-600">{l.message || (l.status === 'started' ? 'Generating…' : '')}</div>
+                <div className="text-sm text-gray-600">{l.message || (norm(l.status) === 'started' ? 'Generating…' : '')}</div>
 
-                {l.status === "completed" && l.data && (
+                {norm(l.status) === "completed" && l.data && (
                   <button
                     onClick={() => setOpenPayload(l.data)}
                     className="mt-2 text-sm text-blue-600 hover:underline"

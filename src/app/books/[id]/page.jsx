@@ -1,294 +1,20 @@
 "use client";
 
 import React from "react";
-import ReactDOM from "react-dom";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import pageThemes from "./pageThemes.json";
-import TextFormat, { markdownToHtml } from "@/components/format/TextFormat";
-import toast from "react-hot-toast";
+import DocView from "@/components/readBooksAllComponent/DocView";
+import EditorPanel from "@/components/readBooksAllComponent/EditorPanel";
+import ImageMagnifierOverlay from "@/components/readBooksAllComponent/ImageMagnifierOverlay";
+import TextFormat from "@/components/format/TextFormat";
+
 const API_BASE = "https://tbmplus-backend.ultimeet.io";
 
-const DOC_FONT = 12;
-const DOC_LINE_HEIGHT = 1;
-
-
-function ImageMagnifierOverlay({
-  src,
-  onClose,
-  minScale = 0.5,
-  maxScale = 8,
-  initialScale = 1,
-}) {
-  const wrapRef = React.useRef(null);
-  const imgRef = React.useRef(null);
-  const [scale, setScale] = React.useState(initialScale);
-  const [tx, setTx] = React.useState(0);
-  const [ty, setTy] = React.useState(0);
-  const [panning, setPanning] = React.useState(false);
-  const panStart = React.useRef({ x: 0, y: 0, tx0: 0, ty0: 0 });
-
-  const pinchRef = React.useRef({
-    active: false,
-    startDist: 0,
-    startScale: initialScale,
-    centerX: 0,
-    centerY: 0,
-  });
-
-  React.useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
-
-  React.useEffect(() => {
-    function onKey(e) {
-      if (e.key === "Escape") onClose?.();
-      if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "=")) {
-        e.preventDefault();
-        zoomAtCenter(1.15);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === "-") {
-        e.preventDefault();
-        zoomAtCenter(1 / 1.15);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "0") {
-        e.preventDefault();
-        resetView();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-
-  function resetView() {
-    setScale(1);
-    setTx(0);
-    setTy(0);
-  }
-
-  function zoomAtCenter(factor) {
-    const box = wrapRef.current?.getBoundingClientRect();
-    const cx = box ? box.left + box.width / 2 : window.innerWidth / 2;
-    const cy = box ? box.top + box.height / 2 : window.innerHeight / 2;
-    zoomAtPoint(factor, cx, cy);
-  }
-
-  function zoomAtPoint(factor, clientX, clientY) {
-    const img = imgRef.current;
-    const wrap = wrapRef.current;
-    if (!img || !wrap) return;
-
-    const rect = wrap.getBoundingClientRect();
-    const px = clientX - rect.left;
-    const py = clientY - rect.top;
-
-    const newScale = clamp(scale * factor, minScale, maxScale);
-
-    const dx = px - (px - tx) * (newScale / scale);
-    const dy = py - (py - ty) * (newScale / scale);
-    setScale(newScale);
-    setTx(dx);
-    setTy(dy);
-  }
-
-  function onWheel(e) {
-    e.preventDefault();
-    const direction = e.deltaY > 0 ? 1 / 1.1 : 1.1;
-    zoomAtPoint(direction, e.clientX, e.clientY);
-  }
-
-  function onMouseDown(e) {
-    if (e.button !== 0) return;
-    setPanning(true);
-    panStart.current = { x: e.clientX, y: e.clientY, tx0: tx, ty0: ty };
-  }
-  function onMouseMove(e) {
-    if (!panning) return;
-    const dx = e.clientX - panStart.current.x;
-    const dy = e.clientY - panStart.current.y;
-    setTx(panStart.current.tx0 + dx);
-    setTy(panStart.current.ty0 + dy);
-  }
-  function onMouseUp() {
-    setPanning(false);
-  }
-
-  function onDoubleClick(e) {
-    e.preventDefault();
-    const targetScale = scale < 2 ? 2 : 1;
-    const factor = targetScale / scale;
-    zoomAtPoint(factor, e.clientX, e.clientY);
-  }
-
-  function getTouches(e) {
-    return Array.from(e.touches || []);
-  }
-  function dist(a, b) {
-    const dx = a.clientX - b.clientX,
-      dy = a.clientY - b.clientY;
-    return Math.hypot(dx, dy);
-  }
-  function center(a, b) {
-    return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
-  }
-
-  function onTouchStart(e) {
-    if (e.touches.length === 2) {
-      const [t1, t2] = getTouches(e);
-      pinchRef.current.active = true;
-      pinchRef.current.startDist = dist(t1, t2);
-      pinchRef.current.startScale = scale;
-      const c = center(t1, t2);
-      pinchRef.current.centerX = c.x;
-      pinchRef.current.centerY = c.y;
-    } else if (e.touches.length === 1) {
-      setPanning(true);
-      const t = e.touches[0];
-      panStart.current = { x: t.clientX, y: t.clientY, tx0: tx, ty0: ty };
-    }
-  }
-  function onTouchMove(e) {
-    if (pinchRef.current.active && e.touches.length === 2) {
-      e.preventDefault();
-      const [t1, t2] = getTouches(e);
-      const d = dist(t1, t2);
-      const factor = d / (pinchRef.current.startDist || d);
-      const target = clamp(
-        pinchRef.current.startScale * factor,
-        minScale,
-        maxScale
-      );
-      const f = target / scale;
-      zoomAtPoint(f, pinchRef.current.centerX, pinchRef.current.centerY);
-    } else if (panning && e.touches.length === 1) {
-      const t = e.touches[0];
-      const dx = t.clientX - panStart.current.x;
-      const dy = t.clientY - panStart.current.y;
-      setTx(panStart.current.tx0 + dx);
-      setTy(panStart.current.ty0 + dy);
-    }
-  }
-  function onTouchEnd() {
-    if (pinchRef.current.active) {
-      pinchRef.current.active = false;
-    }
-    setPanning(false);
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,.7)",
-        zIndex: 9999,
-        display: "grid",
-        placeItems: "center",
-        cursor: panning ? "grabbing" : "default",
-      }}
-    >
-      <div
-        style={{
-          position: "fixed",
-          top: 12,
-          right: 12,
-          display: "flex",
-          gap: 8,
-          zIndex: 10000,
-        }}
-      >
-        <button
-          onClick={() => zoomAtCenter(1 / 1.15)}
-          style={btnStyle}
-          title="Zoom out (Ctrl/Cmd -)"
-        >
-          –
-        </button>
-        <button
-          onClick={() => zoomAtCenter(1.15)}
-          style={btnStyle}
-          title="Zoom in (Ctrl/Cmd +)"
-        >
-          +
-        </button>
-        <button onClick={resetView} style={btnStyle} title="Reset (Ctrl/Cmd 0)">
-          Reset
-        </button>
-        <button
-          onClick={onClose}
-          style={{ ...btnStyle, background: "#ef4444", color: "#fff" }}
-          title="Close (Esc)"
-        >
-          Close
-        </button>
-      </div>
-
-      <div
-        ref={wrapRef}
-        onWheel={onWheel}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
-        onDoubleClick={onDoubleClick}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        style={{
-          position: "relative",
-          width: "min(92vw, 1200px)",
-          height: "min(88vh, 90vh)",
-          background: "#0b0d10",
-          borderRadius: 12,
-          overflow: "hidden",
-          border: "1px solid #334155",
-          touchAction: "none",
-          userSelect: "none",
-          cursor: panning ? "grabbing" : "grab",
-        }}
-      >
-        <img
-          ref={imgRef}
-          src={src}
-          alt="Zoom"
-          draggable={false}
-          style={{
-            transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
-            transformOrigin: "0 0",
-            willChange: "transform",
-            maxWidth: "unset",
-            maxHeight: "unset",
-            pointerEvents: "none",
-            userSelect: "none",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-const btnStyle = {
-  height: 36,
-  padding: "0 12px",
-  borderRadius: 8,
-  border: "1px solid #e5e7eb",
-  background: "#fff",
-  cursor: "pointer",
-  fontWeight: 700,
-};
-
+/* ===========================
+   Utils
+=========================== */
 
 async function jfetch(path, { method = "GET", body } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -305,21 +31,17 @@ async function jfetch(path, { method = "GET", body } = {}) {
   return res.json();
 }
 
-
 function clamp01(x) {
   return Math.max(0, Math.min(1, x));
 }
 function hexToRgb(hex) {
   const h = (hex || "").replace("#", "").trim();
-  const v = h.length === 3
-    ? h.split("").map((c) => c + c).join("")
-    : h.padEnd(6, "0").slice(0, 6);
+  const v = h.length === 3 ? h.split("").map((c) => c + c).join("") : h.padEnd(6, "0").slice(0, 6);
   const n = parseInt(v, 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 function rgbToHex({ r, g, b }) {
-  const to = (n) => Math.max(0, Math.min(255, Math.round(n)))
-    .toString(16).padStart(2, "0");
+  const to = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
   return `#${to(r)}${to(g)}${to(b)}`;
 }
 function mix(c1, c2, t) {
@@ -334,28 +56,453 @@ function lighten(hex, t = 0.1) {
 function darken(hex, t = 0.1) {
   return mix(hex, "#000000", clamp01(t));
 }
-function relativeLuminance(hex) {
-  const { r, g, b } = hexToRgb(hex);
-  const srgb = [r, g, b].map((v) => v / 255).map((c) => {
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  });
-  return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+
+function normalizeQuestions(q) {
+  if (!q) return "";
+  if (Array.isArray(q)) return q.map((x, i) => `${i + 1}. ${String(x ?? "").trim()}`).join("\n");
+  if (typeof q === "object") {
+    const vals = Object.values(q)
+      .map((v) => String(v ?? "").trim())
+      .filter(Boolean);
+    return vals.map((x, i) => `${i + 1}. ${x}`).join("\n");
+  }
+  return String(q ?? "").trim();
 }
-function contrastRatio(h1, h2) {
+function pickFirst(obj, paths) {
+  for (const p of paths) {
+    const val = p.split(".").reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), obj);
+    if (typeof val === "string" && val.trim()) return val.trim();
+    if (Array.isArray(val) && val.length) return val;
+    if (val && typeof val === "object" && Object.keys(val).length) return val;
+  }
+  return "";
+}
+function addOptionSpacing(s) {
+  if (!s) return "";
+  const lines = String(s).split(/\r?\n/);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    out.push(line);
+    if (/^\s*-?\s*[A-D]\)\s/i.test(line)) {
+      const next = lines[i + 1];
+      if (next !== undefined && next.trim() !== "") out.push("");
+    }
+  }
+  return out.join("\n");
+}
+function blocksFromLesson(lesson) {
+  const items =
+    Array.isArray(lesson?.contents) && lesson.contents.length
+      ? lesson.contents
+      : lesson?.contents && typeof lesson.contents === "object"
+        ? [lesson.contents]
+        : [lesson];
+
+  const blocks = [];
+  items.forEach((it) => {
+    const textVal = pickFirst(it, ["text", "body", "content.text"]);
+    const summaryVal = pickFirst(it, ["content_summary", "summary", "content.content_summary"]);
+    const quesVal = pickFirst(it, ["questions", "content.questions"]);
+    const text = textVal ? `\n${String(textVal).trim()}` : "";
+    const summary = summaryVal ? `\n#### Content Summary\n\n${String(summaryVal).trim()}` : "";
+    const qRaw = normalizeQuestions(quesVal);
+    const qSpaced = addOptionSpacing(qRaw);
+    const questions = qSpaced ? `#### Questions\n\n${qSpaced}` : "";
+    let block = [text, summary, questions].filter(Boolean).join("\n\n");
+
+    if (!block && items.length === 1) {
+      const lText = pickFirst(lesson, ["text", "generated_prompt"]);
+      const lSum = pickFirst(lesson, ["content_summary", "lesson_description"]);
+      const lQ = addOptionSpacing(normalizeQuestions(pickFirst(lesson, ["questions"])));
+      const t = lText ? `${String(lText).trim()}` : "";
+      const s = lSum ? `#### Content Summary\n\n${String(lSum).trim()}` : "";
+      const q = lQ ? `#### Questions\n\n${lQ}` : "";
+      block = [t, s, q].filter(Boolean).join("\n\n");
+    }
+    if (block) blocks.push(block);
+  });
+  return blocks;
+}
+function _escapeHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function stripScripts(html = "") {
+  return String(html).replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+}
+function readMeta(html) {
+  const unit = (String(html).match(/data-unit="([^"]*)"/i)?.[1] || "").trim();
+  const title = (String(html).match(/data-title="([^"]*)"/i)?.[1] || "").trim();
+  const klass = (String(html).match(/data-class="([^"]*)"/i)?.[1] || "").trim();
+  return { unit, title, className: klass };
+}
+function extractHexColorsFromHTML(html) {
+  if (!html) return [];
+  const colors = new Set();
+  const re = /(?:fill|stroke|stop-color)\s*[:=]\s*["']?\s*(#[0-9a-fA-F]{3,6})\b/gi;
+  let m;
+  while ((m = re.exec(html))) colors.add(m[1].toLowerCase());
+  return Array.from(colors);
+}
+function replaceHexColors(html, colorMap) {
+  if (!html) return "";
+  let out = String(html);
+  const keys = Object.keys(colorMap || {}).sort((a, b) => b.length - a.length);
+  for (const from of keys) {
+    const to = colorMap[from];
+    if (!from || !to || from.toLowerCase() === to.toLowerCase()) continue;
+    const re = new RegExp(from.replace("#", "\\#"), "gi");
+    out = out.replace(re, to);
+  }
+  return out;
+}
+
+// Paragraph-based pagination (kept as in your version)
+function splitHtmlByParagraphs(html = "", maxCharsPerPage = 1800) {
+  const P = String(html || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/<\/p>\s*<p/gi, "</p>\n<p")
+    .split(/\n{2,}|\n(?=<p\b)/);
+
+  const pages = [];
+  let current = "";
+
+  const push = () => {
+    const s = current.trim();
+    if (s) pages.push(s);
+    current = "";
+  };
+
+  for (const chunk of P) {
+    const c = chunk.trim();
+    if (!c) continue;
+
+    if (c.length > maxCharsPerPage * 1.1) {
+      const sentences = c.split(/(?<=[.!?])\s+/);
+      for (const s of sentences) {
+        if ((current + "\n\n" + s).length > maxCharsPerPage) push();
+        current += (current ? "\n\n" : "") + s;
+      }
+      continue;
+    }
+
+    if ((current + "\n\n" + c).length > maxCharsPerPage) push();
+    current += (current ? "\n\n" : "") + c;
+  }
+  push();
+  return pages;
+}
+
+/*  ✅ Fallback converter (your original htmlToMarkdown) —
+    used ONLY if TextFormat.htmlToMarkdown is not available. */
+function legacyHtmlToMarkdown(html = "") {
+  if (!html || typeof html !== "string") return "";
+  let s = html;
+  s = s.replace(/<br\s*\/?>/gi, "\n");
+  s = s.replace(/<\/p>\s*/gi, "\n\n").replace(/<p[^>]*>/gi, "");
+  s = s.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_, t) => `# ${t}\n\n`);
+  s = s.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, t) => `## ${t}\n\n`);
+  s = s.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, t) => `### ${t}\n\n`);
+  s = s.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, t) => `#### ${t}\n\n`);
+  s = s.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, (_, t) => `##### ${t}\n\n`);
+  s = s.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, (_, t) => `###### ${t}\n\n`);
+  s = s.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, "**$1**");
+  s = s.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, "**$1**");
+  s = s.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, "_$1_");
+  s = s.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, "_$1_");
+  s = s.replace(/<u[^>]*>([\s\S]*?)<\/u>/gi, "$1");
+  s = s.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (_, src) => `\n\n![](${src})\n\n`);
+  s = s.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href, text) => `[${text}](${href})`);
+  s = s.replace(/<\/li>\s*<\/ul>/gi, "</li>\n</ul>");
+  s = s.replace(/<ul[^>]*>\s*/gi, "\n");
+  s = s.replace(/<li[^>]*>\s*/gi, "- ");
+  s = s.replace(/<\/li>/gi, "\n");
+  s = s.replace(/<\/ul>/gi, "\n");
+  s = s.replace(/<\/?div[^>]*>/gi, "\n");
+  s = s.replace(/<\/?span[^>]*>/gi, "");
+  s = s.replace(/<\/?section[^>]*>/gi, "\n");
+  s = s.replace(/<\/?[^>]+>/g, "");
+  s = s.replace(/\n{3,}/g, "\n\n");
+  return s.trim();
+}
+
+function bookToPagesWithTheme(book, theme) {
+  const tempPages = [];
+  const page_bg = theme?.page_bg || "#ffffff";
+  const text = theme?.text || "#0f172a";
+  const accent = theme?.accent || "#2563eb";
+  const accent2 = theme?.accent2 || "#60a5fa";
+  const hasBgImg = !!theme?.page_bg_image;
+  const blockBg = hasBgImg ? "transparent" : page_bg;
+  const tableBd = hasBgImg ? "rgba(255,255,255,.25)" : "#e5e7eb";
+  const chipBg = hasBgImg ? "transparent" : "#fff";
+  const chipBd = tableBd;
+  const chipShadow = hasBgImg ? "none" : "0 2px 8px rgba(0,0,0,.03)";
+  const badgeBg = hasBgImg ? "transparent" : (accent || text);
+  const badgeTxt = hasBgImg ? text : "#fff";
+
+  const sj = book?.syllabus;
+  const units =
+    Array.isArray(book?.units) && book.units.length
+      ? book.units
+      : Array.isArray(sj?.units)
+        ? sj.units.map((u) => ({
+          title: u.title,
+          number_of_pages: u.number_of_pages,
+          description: u.description || "",
+          lessons: (u.lessons || []).map((l) => ({
+            title: l.title,
+            content_summary: l.contents?.content_summary,
+            questions: l.contents?.questions,
+            text: l.contents?.text,
+          })),
+        }))
+        : [];
+
+  const className = pickFirst(book, ["class_name", "class", "grade", "standard"]) || "";
+
+  function wrap(bodyHtml, ctx = {}) {
+    const PAGE_SIDE_PAD = 28; // px: yahin se global LR padding control karo
+    const metaProbe = `
+      <span style="display:none"
+        data-unit="${_escapeHtml(ctx.unit || "")}"
+       data-class="${_escapeHtml(className)}"
+        data-title="${_escapeHtml(ctx.title || "")}">
+      </span>`;
+    // sabhi pages ke content ko ek padded wrapper me daalo
+    tempPages.push(
+      `${metaProbe}<div style="padding: 0 ${PAGE_SIDE_PAD}px">${bodyHtml}</div>`
+    );
+  }
+  const tocRows = (units || [])
+    .map((u, ui) => {
+      const uTitle = u.title || `Unit ${ui + 1}`;
+      const uPages = u.number_of_pages ?? "—";
+      const chipBase = `
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 10px;margin:6px 8px 0 0;
+  border:1px solid ${tableBd};
+  border-radius:9999px;font-size:12px;line-height:1.1;
+  background:${hasBgImg ? "transparent" : "#fff"};
+  color:${text};
+  max-width:100%;box-sizing:border-box;overflow:hidden
+`;
+      const chipNum = `
+  display:inline-grid;place-items:center;min-width:18px;height:18px;
+  padding:0 4px;border-radius:6px;
+  ${hasBgImg ? `background:transparent;border:1px solid ${tableBd};color:${text};` : `background:${accent};color:#fff;`}
+  font-weight:700;font-size:11px;flex:0 0 auto
+`;
+      const chipTitle = `
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;
+  color:${text}
+`;
+
+      const lessonChipsInner = (u.lessons || [])
+        .map((l, li) => {
+          const num = `${ui + 1}.${li + 1}`;
+          const title = l.title || `Lesson ${li + 1}`;
+          return `
+      <span style="${chipBase}">
+        <span style="${chipNum}">${num}</span>
+        <span style="${chipTitle}">${_escapeHtml(title)}</span>
+      </span>`;
+        })
+        .join("");
+
+      const lessonChips =
+        u.lessons && u.lessons.length
+          ? lessonChipsInner
+          : `<span style="${chipBase};opacity:.7;background:#f8fafc">No lessons</span>`;
+
+      const rowBg = hasBgImg ? "transparent" : (ui % 2 === 0 ? "rgba(0,0,0,.02)" : page_bg);
+
+      return `
+      <tr style="background:${rowBg}">
+        <td style="padding:12px 12px;width:42px;color:#64748b;font-weight:700;">
+          ${ui + 1}.
+        </td>
+        <td style="padding:12px 12px;">
+          <div style="font-weight:800;color:${text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">
+            ${_escapeHtml(uTitle)}
+          </div>
+        </td>
+        <td style="padding:12px 12px;width:120px;text-align:right;color:${accent};font-weight:800;">
+          ${uPages} pages
+        </td>
+      </tr>
+
+      <tr style="background:${rowBg}">
+        <td></td>
+        <td colspan="2" style="padding:4px 12px 14px 12px;">
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-start;max-width:100%;overflow:hidden">
+            ${lessonChips}
+          </div>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  const contentsBody = `
+  <div style="padding:8px 0 4px 0; background:${blockBg};">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:0 0 8px 0;">
+      <h1 style="margin:0 auto;font-size:2.25rem;font-weight:800;color:${text};text-align:center;width:100%;">Contents</h1>
+    </div>
+
+    <table style="width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;border:1px solid ${tableBd};border-radius:12px;overflow:hidden;background-color:${blockBg};box-shadow:${hasBgImg ? "none" : "0 2px 10px rgba(0,0,0,.03)"}">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:12px 12px;width:42px;color:${accent};font-weight:800;border-bottom:1px solid ${tableBd};background:${hasBgImg ? "transparent" : "rgba(37,99,235,.06)"}">#</th>
+          <th style="text-align:left;padding:12px 12px;color:${accent};font-weight:800;border-bottom:1px solid ${tableBd};background:${hasBgImg ? "transparent" : "rgba(37,99,235,.06)"}">Unit</th>
+          <th style="text-align:right;padding:12px 12px;color:${accent};font-weight:800;width:120px;border-bottom:1px solid ${tableBd};background:${hasBgImg ? "transparent" : "rgba(37,99,235,.06)"}">Pages</th>
+        </tr>
+      </thead>
+      <tbody style="background:${blockBg};">
+        ${tocRows ||
+    `<tr style="background:${blockBg};">
+            <td colspan="3" style="padding:16px 12px;color:#64748b;text-align:center;border-top:1px dashed ${tableBd};background:${blockBg};">
+              No units available
+            </td>
+          </tr>`}
+      </tbody>
+    </table>
+  </div>`;
+  wrap(contentsBody, { unit: "Contents" });
+
+  (units || []).forEach((u, ui) => {
+    const uTitle = u.title || `Unit ${ui + 1}`;
+    const uPages = u.number_of_pages ?? "—";
+    const uDesc = u.description || "";
+
+    const lessonChipBase = `
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 12px;border-radius:12px;background:${hasBgImg ? "transparent" : "#fff"};
+  border:1px solid ${tableBd};box-shadow:${hasBgImg ? "none" : "0 2px 8px rgba(0,0,0,.03)"};
+  max-width:100%; box-sizing:border-box; margin:6px 8px 0 0
+`;
+    const lessonNumBadge = `
+  display:inline-grid;place-items:center;min-width:24px;height:24px;
+  padding:0 6px;border-radius:8px;background:${hasBgImg ? "transparent" : (accent || text)};color:${hasBgImg ? text : "#fff"};
+  font-weight:800;font-size:12px;flex:0 0 auto
+`;
+    const lessonTitleStyle = `
+  font-weight:700;color:${text};font-size:13px;min-width:0;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+`;
+
+    const lessonsChipsHTML = (u.lessons || [])
+      .map((l, li) => {
+        const num = `${ui + 1}.${li + 1}`;
+        const title = l.title || `Lesson ${li + 1}`;
+        return `
+      <div style="${lessonChipBase}">
+        <span style="${lessonNumBadge}">${num}</span>
+        <span style="${lessonTitleStyle}">${_escapeHtml(title)}</span>
+      </div>`;
+      })
+      .join("");
+
+    const lessonsBlock =
+      u.lessons && u.lessons.length
+        ? `<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;width:100%;box-sizing:border-box;max-width:100%;overflow:hidden">${lessonsChipsHTML}</div>`
+        : `<p style="margin:0;color:#64748b;">No lessons</p>`;
+
+    const unitHeroBody = [
+      `<section style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;background-color:${hasBgImg ? "transparent" : page_bg};">
+        <div style="padding:20px 16px;max-width:820px;">
+          <h1 style="margin:0 0 10px 0;font-size:2.5rem;font-weight:800;letter-spacing:.2px;color:${text};">${_escapeHtml(uTitle)}</h1>
+          ${uDesc ? `<p style="margin:14px auto 0;max-width:720px;color:${text};line-height:1.7;">${_escapeHtml(uDesc)}</p>` : ``}
+        </div>
+      </section>`,
+      `<div style="margin-top:18px;background:${hasBgImg ? "transparent" : page_bg};">
+        <div style="display:flex;align-items:center;gap:10px;margin:0 0 10px 0">
+          <h3 style="margin:0;font-size:1.125rem;font-weight:800;color:${text};">Lessons</h3>
+        </div>
+        ${lessonsBlock}
+      </div>`,
+    ].join("\n\n");
+
+    wrap(unitHeroBody, { unit: uTitle });
+
+    (u.lessons || []).forEach((l, li) => {
+      const lTitle = l.title || `Lesson ${li + 1}`;
+      const lPages = l.number_of_pages ?? "—";
+      const blocks = blocksFromLesson(l);
+
+      if (blocks.length) {
+        blocks.forEach((b, bi) => {
+          const titleTop =
+            bi === 0
+              ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(
+                lTitle
+              )}</h3>
+             <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
+              : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(lTitle)} — Page ${bi + 1}</h3>`;
+
+          const safeHtml = stripScripts(b);
+          const body = `${titleTop}<div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
+
+          const parts = splitHtmlByParagraphs(body, 1800);
+          parts.forEach((part, pi) => {
+            const numbered =
+              parts.length > 1
+                ? part.replace(
+                  /(<h3[^>]*>)([\s\S]*?)(<\/h3>)/i,
+                  `$1$2 — Part ${pi + 1}/${parts.length}$3`
+                )
+                : part;
+            wrap(numbered, { unit: uTitle, title: lTitle });
+          });
+        });
+      } else {
+        const body = `
+      <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(
+          lTitle
+        )}</h3>
+      <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
+      <div style="color:${text}"><em>No content available yet.</em></div>`;
+        wrap(body, { unit: uTitle, title: lTitle });
+      }
+    });
+
+  });
+
+  const total = tempPages.length;
+  return tempPages.map((html) => html.replace(/\{\{\s*total\s*\}\}/g, String(total)));
+}
+// Make sure every <img> inside a node is fully loaded before html2canvas
+async function ensureImagesLoaded(rootEl) {
+  const imgs = Array.from(rootEl.querySelectorAll('img[src]'));
+  await Promise.all(
+    imgs.map(img => {
+      // eager + no lazy swap during capture
+      try { img.loading = 'eager'; img.decoding = 'sync'; } catch { }
+      return new Promise(res => {
+        if (img.complete && img.naturalWidth > 0) return res();
+        const onDone = () => { img.removeEventListener('load', onDone); img.removeEventListener('error', onDone); res(); };
+        img.addEventListener('load', onDone);
+        img.addEventListener('error', onDone);
+      });
+    })
+  );
+}
+
+
+
+const relativeLuminance = (hex) => {
+  const { r, g, b } = hexToRgb(hex);
+  const srgb = [r, g, b].map((v) => v / 255).map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+};
+const contrastRatio = (h1, h2) => {
   const L1 = relativeLuminance(h1);
   const L2 = relativeLuminance(h2);
   const hi = Math.max(L1, L2), lo = Math.min(L1, L2);
   return (hi + 0.05) / (lo + 0.05);
-}
-function encodeSVG(svg) {
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-function pickReadableTextOn(bg) {
-  const cBlack = contrastRatio(bg, "#000000");
-  const cWhite = contrastRatio(bg, "#ffffff");
-  return cBlack > cWhite ? "#000000" : "#ffffff";
-}
-
+};
+const encodeSVG = (svg) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+const escapeXml = (s = "") =>
+  String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 function buildA4Background({
   pageBG = "#ffffff",
   accent = "#2563eb",
@@ -369,19 +516,14 @@ function buildA4Background({
   const W = 2480, H = 3508;
 
   const p0 = pageBG;
-  const p1 = lighten(pageBG, 0.06);
-  const p2 = darken(pageBG, 0.10);
   const a1 = accent || "#2563eb";
   const a2 = accent2 || lighten(a1, 0.35);
-
-  const textOnAccent = pickReadableTextOn(a1);
-  const wmColor = textOnAccent === "#000000" ? darken(a1, 0.5) : lighten(a1, 0.7);
 
   const watermarkDef = `
     <defs>
       <pattern id="wm" width="${wmGap}" height="${wmGap}" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)">
         <text x="0" y="${wmSize}" font-family="Inter,system-ui,Arial" font-size="${wmSize}"
-              fill="${wmColor}" opacity="${wmOpacity}" font-weight="700">
+              fill="${darken(a1, 0.5)}" opacity="${wmOpacity}" font-weight="700">
           ${escapeXml(watermark)}
         </text>
       </pattern>
@@ -393,14 +535,6 @@ function buildA4Background({
         <stop offset="0" stop-color="${lighten(a1, 0.25)}" />
         <stop offset="1" stop-color="${darken(a2, 0.25)}" />
       </linearGradient>
-      <radialGradient id="gMesh" cx="25%" cy="20%" r="80%">
-        <stop offset="0" stop-color="${lighten(a2, 0.45)}" stop-opacity="0.65"/>
-        <stop offset="1" stop-color="${p0}" stop-opacity="0.0"/>
-      </radialGradient>
-      <radialGradient id="gMesh2" cx="75%" cy="85%" r="80%">
-        <stop offset="0" stop-color="${lighten(a1, 0.35)}" stop-opacity="0.55"/>
-        <stop offset="1" stop-color="${p0}" stop-opacity="0.0"/>
-      </radialGradient>
     </defs>
   `;
 
@@ -409,30 +543,37 @@ function buildA4Background({
   let overlay = "";
   if (style === "diagonal") {
     overlay = `
-      <path d="M0,0 L${W},0 L${W},${Math.round(H * 0.26)} Q ${Math.round(W * 0.55)},${Math.round(H * 0.36)} ${Math.round(W * 0.35)},${Math.round(H * 0.24)} T 0,${Math.round(H * 0.34)} Z" fill="url(#gA)" opacity="0.95"/>
-      <path d="M0,${Math.round(H * 0.70)} Q ${Math.round(W * 0.25)},${Math.round(H * 0.60)} ${Math.round(W * 0.55)},${Math.round(H * 0.72)} T ${W},${Math.round(H * 0.60)} L${W},${H} L0,${H} Z" fill="url(#gB)" opacity="0.90"/>
+      <path d="M0,0 L${W},0 L${W},${Math.round(H * 0.26)} Q ${Math.round(W * 0.55)},${Math.round(H * 0.36)} ${Math.round(
+      W * 0.35
+    )},${Math.round(H * 0.24)} T 0,${Math.round(H * 0.34)} Z" fill="url(#gA)" opacity="0.95"/>
+      <path d="M0,${Math.round(H * 0.70)} Q ${Math.round(W * 0.25)},${Math.round(H * 0.60)} ${Math.round(
+      W * 0.55
+    )},${Math.round(H * 0.72)} T ${W},${Math.round(H * 0.60)} L${W},${H} L0,${H} Z" fill="url(#gB)" opacity="0.90"/>
     `;
   } else if (style === "mesh") {
     overlay = `
-      <rect x="0" y="0" width="${W}" height="${H}" fill="url(#gMesh)"/>
-      <rect x="0" y="0" width="${W}" height="${H}" fill="url(#gMesh2)"/>
-      <circle cx="${Math.round(W * 0.15)}" cy="${Math.round(H * 0.18)}" r="${Math.round(H * 0.14)}" fill="${lighten(a2, 0.1)}" opacity="0.08"/>
-      <circle cx="${Math.round(W * 0.82)}" cy="${Math.round(H * 0.86)}" r="${Math.round(H * 0.12)}" fill="${lighten(a1, 0.1)}" opacity="0.08"/>
+      <rect x="0" y="0" width="${W}" height="${H}" fill="url(#gA)" opacity="0.08"/>
+      <rect x="0" y="0" width="${W}" height="${H}" fill="url(#gB)" opacity="0.10"/>
     `;
   } else if (style === "soft-arcs") {
     overlay = `
-      <path d="M0,${Math.round(H * 0.16)} Q ${Math.round(W * 0.26)},${Math.round(H * 0.04)} ${Math.round(W * 0.52)},${Math.round(H * 0.10)} T ${W},${Math.round(H * 0.07)} L${W},0 L0,0 Z" fill="${a2}" opacity="0.85"/>
-      <path d="M0,${Math.round(H * 0.22)} Q ${Math.round(W * 0.30)},${Math.round(H * 0.10)} ${Math.round(W * 0.60)},${Math.round(H * 0.16)} T ${W},${Math.round(H * 0.12)} L${W},${Math.round(H * 0.07)} Q ${Math.round(W * 0.70)},${Math.round(H * 0.18)} ${Math.round(W * 0.35)},${Math.round(H * 0.11)} T 0,${Math.round(H * 0.16)} Z" fill="${a1}" opacity="0.92"/>
-      <path d="M0,${Math.round(H * 0.86)} Q ${Math.round(W * 0.28)},${Math.round(H * 0.98)} ${Math.round(W * 0.60)},${Math.round(H * 0.90)} T ${W},${Math.round(H * 0.95)} L${W},${H} L0,${H} Z" fill="${lighten(a2, 0.05)}" opacity="0.9"/>
+      <path d="M0,${Math.round(H * 0.16)} Q ${Math.round(W * 0.26)},${Math.round(H * 0.04)} ${Math.round(
+      W * 0.52
+    )},${Math.round(H * 0.10)} T ${W},${Math.round(H * 0.07)} L${W},0 L0,0 Z" fill="${a2}" opacity="0.85"/>
+      <path d="M0,${Math.round(H * 0.22)} Q ${Math.round(W * 0.30)},${Math.round(H * 0.10)} ${Math.round(
+      W * 0.60
+    )},${Math.round(H * 0.16)} T ${W},${Math.round(H * 0.12)} L${W},${Math.round(H * 0.07)} Q ${Math.round(
+      W * 0.70
+    )},${Math.round(H * 0.18)} ${Math.round(W * 0.35)},${Math.round(H * 0.11)} T 0,${Math.round(H * 0.16)} Z" fill="${a1}" opacity="0.92"/>
     `;
   } else {
     overlay = `
-      <path d="M0,0 L${W},0 L${W},${Math.round(H * 0.18)} Q ${Math.round(W * 0.66)},${Math.round(H * 0.28)} ${Math.round(W * 0.35)},${Math.round(H * 0.16)} T 0,${Math.round(H * 0.22)} Z"
-            fill="${a1}" opacity="0.95"/>
-      <path d="M0,${Math.round(H * 0.20)} Q ${Math.round(W * 0.26)},${Math.round(H * 0.08)} ${Math.round(W * 0.52)},${Math.round(H * 0.16)} T ${W},${Math.round(H * 0.10)} L${W},${Math.round(H * 0.0)} L0,0 Z"
-            fill="${a2}" opacity="0.85"/>
-      <path d="M0,${Math.round(H * 0.84)} Q ${Math.round(W * 0.25)},${Math.round(H * 0.70)} ${Math.round(W * 0.55)},${Math.round(H * 0.88)} T ${W},${Math.round(H * 0.76)} L${W},${H} L0,${H} Z"
-            fill="${lighten(a1, 0.05)}" opacity="0.90"/>
+      <path d="M0,0 L${W},0 L${W},${Math.round(H * 0.18)} Q ${Math.round(W * 0.66)},${Math.round(H * 0.28)} ${Math.round(
+      W * 0.35
+    )},${Math.round(H * 0.16)} T 0,${Math.round(H * 0.22)} Z" fill="${a1}" opacity="0.95"/>
+      <path d="M0,${Math.round(H * 0.20)} Q ${Math.round(W * 0.26)},${Math.round(H * 0.08)} ${Math.round(
+      W * 0.52
+    )},${Math.round(H * 0.16)} T ${W},${Math.round(H * 0.10)} L${W},${Math.round(H * 0.0)} L0,0 Z" fill="${a2}" opacity="0.85"/>
     `;
   }
 
@@ -449,14 +590,6 @@ function buildA4Background({
 
   return encodeSVG(svg);
 }
-function escapeXml(s = "") {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 
 function generateBackgroundCandidates({
   pageBG,
@@ -491,1091 +624,6 @@ function generateBackgroundCandidates({
   return ranked.slice(0, 8);
 }
 
-
-function normalizeQuestions(q) {
-  if (!q) return "";
-  if (Array.isArray(q))
-    return q.map((x, i) => `${i + 1}. ${String(x ?? "").trim()}`).join("\n");
-  if (typeof q === "object") {
-    const vals = Object.values(q)
-      .map((v) => String(v ?? "").trim())
-      .filter(Boolean);
-    return vals.map((x, i) => `${i + 1}. ${x}`).join("\n");
-  }
-  return String(q ?? "").trim();
-}
-
-function pickFirst(obj, paths) {
-  for (const p of paths) {
-    const val = p
-      .split(".")
-      .reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), obj);
-    if (typeof val === "string" && val.trim()) return val.trim();
-    if (Array.isArray(val) && val.length) return val;
-    if (val && typeof val === "object" && Object.keys(val).length) return val;
-  }
-  return "";
-}
-
-function addOptionSpacing(s) {
-  if (!s) return "";
-  const lines = String(s).split(/\r?\n/);
-  const out = [];
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    out.push(line);
-    if (/^\s*-?\s*[A-D]\)\s/i.test(line)) {
-      const next = lines[i + 1];
-      if (next !== undefined && next.trim() !== "") out.push("");
-    }
-  }
-  return out.join("\n");
-}
-
-function blocksFromLesson(lesson) {
-  const items =
-    Array.isArray(lesson?.contents) && lesson.contents.length
-      ? lesson.contents
-      : lesson?.contents && typeof lesson.contents === "object"
-        ? [lesson.contents]
-        : [lesson];
-
-  const blocks = [];
-  items.forEach((it) => {
-    const textVal = pickFirst(it, ["text", "body", "content.text"]);
-    const summaryVal = pickFirst(it, [
-      "content_summary",
-      "summary",
-      "content.content_summary",
-    ]);
-    const quesVal = pickFirst(it, ["questions", "content.questions"]);
-    const text = textVal ? `\n${String(textVal).trim()}` : "";
-    const summary = summaryVal
-      ? `\n#### Content Summary\n\n${String(summaryVal).trim()}`
-      : "";
-
-    const qRaw = normalizeQuestions(quesVal);
-    const qSpaced = addOptionSpacing(qRaw);
-    const questions = qSpaced ? `#### Questions\n\n${qSpaced}` : "";
-
-    let block = [text, summary, questions].filter(Boolean).join("\n\n");
-
-    if (!block && items.length === 1) {
-      const lText = pickFirst(lesson, ["text", "generated_prompt"]);
-      const lSum = pickFirst(lesson, ["content_summary", "lesson_description"]);
-      const lQ = addOptionSpacing(
-        normalizeQuestions(pickFirst(lesson, ["questions"]))
-      );
-      const t = lText ? `${String(lText).trim()}` : "";
-      const s = lSum ? `#### Content Summary\n\n${String(lSum).trim()}` : "";
-      const q = lQ ? `#### Questions\n\n${lQ}` : "";
-      block = [t, s, q].filter(Boolean).join("\n\n");
-    }
-    if (block) blocks.push(block);
-  });
-  return blocks;
-}
-
-function _escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-function stripScripts(html = "") {
-  return String(html).replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
-}
-function renderTemplate(html, ctx) {
-  if (!html) return "";
-  return html
-    .replace(/\{\{\s*page\s*\}\}/g, String(ctx.page ?? ""))
-    .replace(/\{\{\s*total\s*\}\}/g, String(ctx.total ?? ""))
-    .replace(/\{\{\s*unit\s*\}\}/g, String(ctx.unit ?? ""))
-    .replace(/\{\{\s*class\s*\}\}/g, String(ctx.className ?? ""))
-    .replace(/\{\{\s*date\s*\}\}/g, String(ctx.date ?? ""))
-    .replace(/\{\{\s*title\s*\}\}/g, String(ctx.title ?? ""))
-    .replace(/\{\{\s*subtitle\s*\}\}/g, String(ctx.subtitle ?? ""));
-}
-
-function extractHexColorsFromHTML(html) {
-  if (!html) return [];
-  const colors = new Set();
-  const re =
-    /(?:fill|stroke|stop-color)\s*[:=]\s*["']?\s*(#[0-9a-fA-F]{3,6})\b/gi;
-  let m;
-  while ((m = re.exec(html))) {
-    colors.add(m[1].toLowerCase());
-  }
-  return Array.from(colors);
-}
-
-function replaceHexColors(html, colorMap) {
-  if (!html) return "";
-  let out = String(html);
-  const keys = Object.keys(colorMap || {}).sort((a, b) => b.length - a.length);
-  for (const from of keys) {
-    const to = colorMap[from];
-    if (!from || !to || from.toLowerCase() === to.toLowerCase()) continue;
-    const re = new RegExp(from.replace("#", "\\#"), "gi");
-    out = out.replace(re, to);
-  }
-  return out;
-}
-
-function readMeta(html) {
-  const unit = (String(html).match(/data-unit="([^"]*)"/i)?.[1] || "").trim();
-  const title = (String(html).match(/data-title="([^"]*)"/i)?.[1] || "").trim();
-  const klass = (String(html).match(/data-class="([^"]*)"/i)?.[1] || "").trim();
-  return { unit, title, className: klass };
-}
-
-function measureA4ContentBox() {
-  const FOOTER_SAFETY_GAP = 20;
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return { width: 770, height: 980 - FOOTER_SAFETY_GAP };
-  }
-  const page = document.querySelector('.doc-sheet');
-  if (!page) return { width: 770, height: 940 - FOOTER_SAFETY_GAP };
-
-  const headerWrap = page.firstElementChild;
-  const body = page.querySelector('[data-editable]');
-  const footerWrap = page.lastElementChild;
-
-  const pageRect = page.getBoundingClientRect();
-
-  const headerH = headerWrap ? headerWrap.getBoundingClientRect().height : 0;
-  const footerH = footerWrap ? footerWrap.getBoundingClientRect().height : 0;
-
-  const pageBorder = 2;
-  const style = body ? getComputedStyle(body) : null;
-  const padL = style ? parseFloat(style.paddingLeft) : 12;
-  const padR = style ? parseFloat(style.paddingRight) : 12;
-
-  const contentWidth = body ? Math.floor(body.clientWidth)
-    : Math.floor(pageRect.width - pageBorder - padL - padR);
-
-
-  const contentHeight = Math.max(
-    0,
-    Math.floor(pageRect.height - headerH - footerH - FOOTER_SAFETY_GAP)
-  );
-
-  return { width: contentWidth, height: contentHeight };
-}
-
-function paginateHTMLIntoA4(html, {
-  width = 700,          // content width in px (match your page inner width)
-  maxHeight = 940,      // usable content height (exclude header/footer strips)
-  fontSize = 16,        // baseline font, helps layout match
-  lineHeight = 1.7,
-} = {}) {
-  // 1) Make hidden sandbox root
-  const root = document.createElement("div");
-  Object.assign(root.style, {
-    position: "fixed",
-    left: "-99999px",
-    top: "0",
-    width: `${width}px`,
-    maxHeight: `${maxHeight}px`,
-    boxSizing: "border-box",
-    padding: "0",
-    fontSize: `${fontSize}px`,
-    lineHeight: String(lineHeight),
-    wordBreak: "break-word",
-    whiteSpace: "normal",
-    overflow: "hidden",
-    background: "#fff",
-  });
-  document.body.appendChild(root);
-
-  // parse HTML into a working fragment
-  const scratch = document.createElement("div");
-  scratch.innerHTML = html;
-
-  const pages = [];
-  let page = document.createElement("div");
-  page.style.minHeight = `${maxHeight}px`;
-  root.innerHTML = ""; // ensure empty
-  root.appendChild(page);
-
-  // helpers
-  const fits = () => page.scrollHeight <= maxHeight;
-
-  const cloneShallow = (node) => {
-    const c = node.cloneNode(false);
-    if (node.nodeType === 1) c.style.cssText = node.style?.cssText || "";
-    return c;
-  };
-
-  const splitTextToFit = (textNode) => {
-    const full = textNode.textContent || "";
-    let lo = 0, hi = full.length, ok = 0;
-
-    // binary search largest prefix that fits
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      textNode.textContent = full.slice(0, mid);
-      if (fits()) { ok = mid; lo = mid + 1; } else { hi = mid - 1; }
-    }
-
-    const head = full.slice(0, ok);
-    const tail = full.slice(ok);
-    textNode.textContent = head;
-    return tail;
-  };
-
-  const ensureImgFits = (img) => {
-    // lock to container width first
-    img.style.maxWidth = "100%";
-    img.style.height = "auto";
-
-    const r = img.getBoundingClientRect();
-    // If image still exceeds the page content height, scale it down by height
-    if (r.height > maxHeight) {
-      const natW = img.naturalWidth || r.width || 1;
-      const natH = img.naturalHeight || r.height || 1;
-      const ratio = natW / natH;
-
-      const targetH = Math.min(maxHeight - 8, natH);
-      const targetW = Math.round(targetH * ratio);
-
-      img.style.height = `${targetH}px`;
-      img.style.width = `${Math.min(targetW, width)}px`; // respect content width
-      img.style.objectFit = "contain";
-    }
-  };
-
-  const breakBeforeTags = new Set(["H1", "H2", "H3", "H4", "H5", "H6", "TABLE", "HR"]);
-
-  // core: add a node, splitting if needed
-  const addNode = (node) => {
-    if (node.nodeType === 3) {
-      // text node
-      const t = document.createTextNode(node.textContent || "");
-      page.appendChild(t);
-      if (fits()) return null;
-      // split text
-      const remainder = splitTextToFit(t);
-      if (remainder && remainder.trim()) {
-        return document.createTextNode(remainder);
-      }
-      return null;
-    }
-
-    if (node.nodeType !== 1) return null; // skip others
-
-    // if heading/table: optional soft page break before, if current is not empty and near end
-    if (breakBeforeTags.has(node.tagName) && page.childNodes.length > 0) {
-      if (!fits()) newPage();
-      // if it still doesn't fit, we'll handle below
-    }
-
-    // try whole node first
-    const test = node.cloneNode(true);
-    // image fit adjustment (only for single <img>)
-    if (test.tagName === "IMG") {
-      page.appendChild(test);
-      ensureImgFits(test);
-      if (!fits()) { // even after scale, push to new page
-        page.removeChild(test);
-        newPage();
-        page.appendChild(test);
-        ensureImgFits(test);
-      }
-      return null;
-    }
-
-    page.appendChild(test);
-    if (fits()) return null;
-
-    // too big → remove and split recursively
-    page.removeChild(test);
-    const shell = cloneShallow(node);
-    page.appendChild(shell);
-
-    for (let i = 0; i < node.childNodes.length; i++) {
-      const child = node.childNodes[i].cloneNode(true);
-
-      // try the child as a whole
-      shell.appendChild(child);
-      if (fits()) continue;
-
-      // remove child, and append piecewise
-      shell.removeChild(child);
-
-      if (child.nodeType === 3) {
-        // split text
-        const t = document.createTextNode(child.textContent || "");
-        shell.appendChild(t);
-        const rem = splitTextToFit(t);
-        if (rem && rem.trim()) {
-          // carry remainder to next page inside same block shell
-          child.textContent = rem;
-          // start a new page with a fresh shell and continue
-          const carry = cloneShallow(node);
-          newPage();
-          page.appendChild(carry);
-          // put the leftover text first
-          const t2 = document.createTextNode(rem);
-          carry.appendChild(t2);
-        }
-      } else if (child.nodeType === 1) {
-        // element: descend
-        const leftover = splitElement(child, shell);
-        if (leftover) {
-          newPage();
-          const shell2 = cloneShallow(node);
-          page.appendChild(shell2);
-          shell2.appendChild(leftover);
-        }
-      }
-    }
-    return null;
-  };
-
-  const splitElement = (elem, targetParent) => {
-    // returns leftover node for next page (or null)
-    const holder = cloneShallow(elem);
-    targetParent.appendChild(holder);
-
-    // special-case images inside
-    if (elem.tagName === "IMG") {
-      holder.appendChild(elem.cloneNode(true));
-      ensureImgFits(holder.firstChild);
-      if (!fits()) {
-        targetParent.removeChild(holder);
-        return elem.cloneNode(true); // move entirely to next page
-      }
-      return null;
-    }
-
-    for (let i = 0; i < elem.childNodes.length; i++) {
-      const child = elem.childNodes[i].cloneNode(true);
-      holder.appendChild(child);
-
-      if (fits()) continue;
-
-      // overflow → remove child and split it
-      holder.removeChild(child);
-
-      if (child.nodeType === 3) {
-        const t = document.createTextNode(child.textContent || "");
-        holder.appendChild(t);
-        const rem = splitTextToFit(t);
-        if (rem && rem.trim()) {
-          // leftover element with remaining text
-          const leftover = cloneShallow(elem);
-          const t2 = document.createTextNode(rem);
-          leftover.appendChild(t2);
-          return leftover;
-        }
-      } else if (child.nodeType === 1) {
-        const leftoverChild = splitElement(child, holder);
-        if (leftoverChild) {
-          const leftover = cloneShallow(elem);
-          leftover.appendChild(leftoverChild);
-          return leftover;
-        }
-      }
-    }
-    return null;
-  };
-
-  const newPage = () => {
-    // finalize current page
-    const htmlOut = page.innerHTML;
-    pages.push(`<div class="tbm-body">${htmlOut}</div>`);
-    // start fresh
-    page = document.createElement("div");
-    page.style.minHeight = `${maxHeight}px`;
-    root.innerHTML = "";
-    root.appendChild(page);
-  };
-
-  // Stream children of the source block
-  while (scratch.firstChild) {
-    const node = scratch.firstChild;
-    scratch.removeChild(node);
-    const leftover = addNode(node);
-    if (leftover) {
-      // current page is full; close it and start next
-      newPage();
-      // push leftover into scratch to continue processing
-      scratch.insertBefore(leftover, scratch.firstChild);
-    } else {
-      if (!fits()) {
-        newPage();
-      }
-    }
-  }
-
-  // flush last page
-  if (page.childNodes.length) newPage();
-
-  // cleanup
-  try { document.body.removeChild(root); } catch { }
-  return pages;
-}
-const WORDS_PER_PAGE = 200;
-const USE_WORD_PAGINATION = true;
-function splitIntoWordPages(html = "", wordsPerPage = WORDS_PER_PAGE) {
-
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    const text = String(html || "").replace(/<[^>]+>/g, " ");
-    const words = (text.match(/\S+/g) || []);
-    const chunks = [];
-    for (let i = 0; i < words.length; i += wordsPerPage) {
-      const slice = words.slice(i, i + wordsPerPage).join(" ");
-      chunks.push(`<div>${slice}</div>`);
-    }
-    return chunks.length ? chunks : ["<div></div>"];
-  }
-  const root = document.createElement("div");
-  root.innerHTML = String(html || "");
-
-  const pages = [];
-  let wordsLeft = wordsPerPage;
-
-  const isSkippable = (n) =>
-    n.nodeType === 8 ||
-    (n.nodeType === 1 && /^(script|style)$/i.test(n.tagName));
-
-  const wordCountOfText = (s) => (String(s || "").trim().match(/\S+/g) || []).length;
-
-  function splitTextToBudget(text, budget) {
-    const words = String(text || "").match(/\S+|\s+/g) || [];
-    let used = 0, i = 0;
-    for (; i < words.length; i++) {
-      if (!/\S/.test(words[i])) continue;
-      if (used + 1 > budget) break;
-      used += 1;
-    }
-    const head = words.slice(0, i).join("");
-    const tail = words.slice(i).join("");
-    return { head, tail };
-  }
-
-  // clone node shallow with attributes/styles intact
-  function cloneShallow(node) {
-    if (node.nodeType === 3) return document.createTextNode(node.textContent);
-    const c = node.cloneNode(false);
-    return c;
-  }
-
-  // append nodeClone to target
-  function append(target, n) { target.appendChild(n); }
-
-  // recursive packer: tries to pack "node" into "bucket" with current budget
-  // returns leftover node (for next page) or null
-  function pack(node, bucket) {
-    if (isSkippable(node)) return null;
-
-    if (node.nodeType === 3) {
-      const txt = node.textContent || "";
-      const wc = wordCountOfText(txt);
-
-      if (wc <= wordsLeft) {
-        append(bucket, document.createTextNode(txt));
-        wordsLeft -= wc;
-        return null;
-      }
-      // need to split text across pages
-      if (wordsLeft > 0) {
-        const { head, tail } = splitTextToBudget(txt, wordsLeft);
-        if (head) append(bucket, document.createTextNode(head));
-        wordsLeft = 0;
-        // leftover text node goes to next page
-        return document.createTextNode(tail);
-      }
-      // no budget at all → full text goes to next page
-      return document.createTextNode(txt);
-    }
-
-    if (node.nodeType === 1) {
-      // treat <img> (and media) atomically: don't count as words but keep together
-      if (/^(img|svg|video|canvas|figure|iframe)$/i.test(node.tagName)) {
-        if (bucket.childNodes.length === 0 || wordsLeft > 0) {
-          append(bucket, node.cloneNode(true));
-          return null;
-        } else {
-          return node.cloneNode(true);
-        }
-      }
-
-      const shell = cloneShallow(node);
-      append(bucket, shell);
-
-      for (let i = 0; i < node.childNodes.length; i++) {
-        const child = node.childNodes[i];
-        const leftover = pack(child, shell);
-        if (leftover) {
-          // we filled the page; make a wrapper for leftover under same parent
-          const leftoverShell = cloneShallow(node);
-          leftoverShell.appendChild(leftover);
-          // also carry over remaining siblings to leftoverShell
-          for (let j = i + 1; j < node.childNodes.length; j++) {
-            leftoverShell.appendChild(node.childNodes[j].cloneNode(true));
-          }
-          return leftoverShell;
-        }
-      }
-      return null;
-    }
-
-    // other node types: just clone
-    append(bucket, node.cloneNode(true));
-    return null;
-  }
-
-  // walk root children and fill pages
-  let scratch = document.createElement("div");
-  // move children to a queue to preserve order
-  const queue = Array.from(root.childNodes);
-
-  while (queue.length) {
-    const page = document.createElement("div"); // this will be inner .tbm-body content
-    wordsLeft = wordsPerPage;
-
-    // fill page until budget ends
-    while (queue.length && wordsLeft >= 0) {
-      const node = queue.shift();
-      const leftover = pack(node, page);
-      if (leftover) {
-        // page full → push leftover to queue head for next page
-        queue.unshift(leftover);
-        break;
-      }
-    }
-
-    pages.push(page.innerHTML || "<div></div>");
-  }
-
-  return pages;
-}
-function measureNeededHeight(html, { width, baseFont = 16, lineHeight = 1.7 } = {}) {
-  if (typeof document === "undefined") return 0;
-  const host = document.createElement("div");
-  host.style.cssText = `
-    position:fixed; left:-99999px; top:0;
-    width:${width}px; box-sizing:border-box;
-    font-size:${baseFont}px; line-height:${lineHeight};
-    padding:0; margin:0; visibility:hidden;
-  `;
-  host.innerHTML = `<div>${html}</div>`;
-  document.body.appendChild(host);
-  const need = host.firstElementChild.scrollHeight;
-  document.body.removeChild(host);
-  return need;
-}
-
-function willOverflow(html, { width, maxHeight, baseFont = DOC_FONT, lineHeight = DOC_LINE_HEIGHT }) {
-  if (typeof document === "undefined") return false;
-  const need = measureNeededHeight(html, { width, baseFont, lineHeight });
-  return need > maxHeight;
-}
-function autoFitHtmlToHeight(html, {
-  width,
-  maxHeight,
-  baseFont = DOC_FONT,
-  lineHeight = DOC_LINE_HEIGHT,
-  minScale = 0.85,
-  minFont = 12,
-} = {}) {
-  if (typeof document === "undefined") return html; // SSR guard
-
-  const host = document.createElement("div");
-  host.style.cssText = `
-    position:fixed; left:-99999px; top:0;
-    width:${width}px; box-sizing:border-box;
-    font-size:${baseFont}px; line-height:${lineHeight};
-    padding:0; margin:0; visibility:hidden;
-  `;
-  host.innerHTML = `<div class="__fit_inner">${html}</div>`;
-  document.body.appendChild(host);
-
-  const inner = host.firstElementChild;
-  let need = inner.scrollHeight;
-
-  let scale = Math.min(1, maxHeight / Math.max(1, need));
-  if (scale >= minScale) {
-    const out = `
-      <div style="height:${maxHeight}px; overflow:hidden; position:relative;">
-        <div style="transform:scale(${scale});
-                    transform-origin: top left;
-                    width:${width}px;
-                    font-size:${baseFont}px; line-height:${lineHeight};">
-          ${html}
-        </div>
-      </div>`;
-    document.body.removeChild(host);
-    return out;
-  }
-
-  let low = minFont, high = baseFont, best = baseFont;
-  for (let iter = 0; iter < 8; iter++) {
-    const mid = Math.floor((low + high) / 2);
-    host.style.fontSize = `${mid}px`;
-    need = inner.scrollHeight;
-
-    if (need <= maxHeight) {
-      best = mid;
-      high = mid - 1;
-    } else {
-      low = mid + 1;
-    }
-  }
-
-  // final check
-  host.style.fontSize = `${best}px`;
-  need = inner.scrollHeight;
-
-  // Return reflowed HTML with final font size applied
-  const finalHtml = `
-    <div style="font-size:${best}px; line-height:${lineHeight};">
-      ${html}
-    </div>
-  `;
-
-  document.body.removeChild(host);
-  // If abhi bhi thoda overflow ho, last resort small scale
-  if (typeof document !== "undefined") {
-    // Quick measure again to get exact height for last-micro scale
-    const probe = document.createElement("div");
-    probe.style.cssText = `
-      position:fixed; left:-99999px; top:0; width:${width}px; visibility:hidden;
-    `;
-    probe.innerHTML = finalHtml;
-    document.body.appendChild(probe);
-    const h = probe.scrollHeight;
-    document.body.removeChild(probe);
-
-    if (h > maxHeight) {
-      const s = Math.min(1, maxHeight / h);
-      return `
-        <div style="height:${maxHeight}px; overflow:hidden; position:relative;">
-          <div style="transform:scale(${s}); transform-origin: top left; width:${width}px;">
-            ${finalHtml}
-          </div>
-        </div>
-      `;
-    }
-  }
-  return finalHtml;
-}
-
-
-function bookToPagesWithTheme(book, theme) {
-  const tempPages = [];
-  const page_bg = theme?.page_bg || "#ffffff";
-  const text = theme?.text || "#0f172a";
-  const accent = theme?.accent || "#2563eb";
-  const accent2 = theme?.accent2 || "#60a5fa";
-  const hasBgImg = !!theme?.page_bg_image;
-  const blockBg = hasBgImg ? "transparent" : page_bg;
-  const tableBg = hasBgImg ? "transparent" : page_bg;
-  const thBg = hasBgImg ? "transparent" : "rgba(37,99,235,.06)";
-
-
-  const muted = hasBgImg ? (text || "#e2e8f0") : "#64748b";
-  const tableBd = hasBgImg ? "rgba(255,255,255,.25)" : "#e5e7eb";
-
-  const chipBg = hasBgImg ? "transparent" : "#fff";
-  const chipBd = tableBd;
-  const chipShadow = hasBgImg ? "none" : "0 2px 8px rgba(0,0,0,.03)";
-  const badgeBg = hasBgImg ? "transparent" : (accent || text);
-  const badgeTxt = hasBgImg ? text : "#fff";
-
-  const PAGE_W = 260;
-  const SCALE = PAGE_W / 794;
-  const px = (n) => Math.round(n * SCALE)
-
-  const getContentBox = () => {
-    try {
-      const { width, height } = measureA4ContentBox();
-      const TARGET_CONTENT_WIDTH = 650; 
-      const finalWidth = Math.min(TARGET_CONTENT_WIDTH, Math.max(600, width || 770));
-      return { width: finalWidth, height: Math.max(600, height || 940) };
-    } catch {
-      return { width: 680, height: 940 };
-    }
-  };
-
-
-  function wrapPage(bodyHtml, ctx = {}) {
-    const { width, height } = getContentBox();
-    const fitted = autoFitHtmlToHeight(bodyHtml, {
-      width,
-      maxHeight: height,
-      baseFont: DOC_FONT,
-      lineHeight: DOC_LINE_HEIGHT,
-      minScale: 0.85,
-      minFont: 12,
-    });
-
-    const metaProbe = `
-    <span style="display:none"
-      data-unit="${_escapeHtml(ctx.unit || "")}"
-      data-class="${_escapeHtml(className)}"
-      data-title="${_escapeHtml(ctx.title || "")}">
-    </span>
-  `;
-
-    const full = `
-    <div class="tbm-page" style="position:relative;background-color:${page_bg};color:${text};margin:0;padding:0">
-      <div class="tbm-body" style="padding:16px 18px;line-height:normal;font-size:inherit">
-        ${metaProbe}
-        ${fitted}
-      </div>
-    </div>
-  `.trim();
-    tempPages.push(full);
-  }
-
-
-  function wrapAuto(rawBodyHtml, ctx = {}) {
-    const { width, height } = getContentBox();
-
-    if (USE_WORD_PAGINATION) {
-      const chunks = splitIntoWordPages(rawBodyHtml, WORDS_PER_PAGE);
-      if (!chunks.length) { wrapPage("<div></div>", ctx); return; }
-
-      chunks.forEach((chunkHtml) => {
-        const overflow = willOverflow(chunkHtml, {
-          width,
-          maxHeight: height,
-          baseFont: DOC_FONT,
-          lineHeight: DOC_LINE_HEIGHT,
-        });
-
-        if (!overflow) {
-          wrapPage(chunkHtml, ctx);
-          return;
-        }
-
-
-
-      });
-
-      return;
-    }
-
-    const chunks = paginateHTMLIntoA4(rawBodyHtml, {
-      width,
-      maxHeight: Math.max(0, height - 20),
-      fontSize: DOC_FONT,
-      lineHeight: DOC_LINE_HEIGHT,
-    });
-    if (!chunks.length) { wrapPage("<div></div>", ctx); return; }
-    chunks.forEach((chunk) => wrapPage(chunk, ctx));
-  }
-
-
-
-
-
-  const sj = book?.syllabus;
-  const units =
-    Array.isArray(book?.units) && book.units.length
-      ? book.units
-      : Array.isArray(sj?.units)
-        ? sj.units.map((u) => ({
-          title: u.title,
-          number_of_pages: u.number_of_pages,
-          description: u.description || "",
-          lessons: (u.lessons || []).map((l) => ({
-            title: l.title,
-            content_summary: l.contents?.content_summary,
-            questions: l.contents?.questions,
-            text: l.contents?.text,
-          })),
-        }))
-        : [];
-
-  let pageCounter = 1;
-  const className =
-    pickFirst(book, ["class_name", "class", "grade", "standard"]) || "";
-
-  function wrap(bodyHtml, ctx = {}) {
-    const metaProbe = `
-      <span style="display:none"
-        data-unit="${_escapeHtml(ctx.unit || "")}"
-        data-class="${_escapeHtml(className)}"
-        data-title="${_escapeHtml(ctx.title || "")}">
-      </span>
-    `;
-    const full = `
-      <div class="tbm-page" style="position:relative;background-color:${page_bg};color:${text};margin:0;padding:0">
-        <div class="tbm-body" style="padding:16px 18px;line-height:normal;font-size:inherit">
-          ${metaProbe}
-          ${bodyHtml}
-        </div>
-      </div>
-    `.trim();
-    pageCounter += 1;
-    tempPages.push(full);
-  }
-
-  const tocRows = (units || [])
-    .map((u, ui) => {
-      const uTitle = u.title || `Unit ${ui + 1}`;
-      const uPages = u.number_of_pages ?? "—";
-
-      const chipBase = `
-  display:inline-flex;align-items:center;gap:6px;
-  padding:6px 10px;margin:6px 8px 0 0;
-  border:1px solid ${tableBd};
-  border-radius:9999px;font-size:12px;line-height:1.1;
-  background:${hasBgImg ? "transparent" : "#fff"};
-  color:${text};
-  max-width:100%;box-sizing:border-box;overflow:hidden
-`;
-
-      const chipNum = `
-  display:inline-grid;place-items:center;min-width:18px;height:18px;
-  padding:0 4px;border-radius:6px;
-  ${hasBgImg
-          ? `background:transparent;border:1px solid ${tableBd};color:${text};`
-          : `background:${accent};color:#fff;`}
-  font-weight:700;font-size:11px;flex:0 0 auto
-`;
-
-      const chipTitle = `
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;
-  color:${text}
-`;
-
-
-      const lessonChipsInner = (u.lessons || [])
-        .map((l, li) => {
-          const num = `${ui + 1}.${li + 1}`;
-          const title = l.title || `Lesson ${li + 1}`;
-          return `
-          <span style="${chipBase}">
-          <span style="${chipNum}">${num}</span>
-             <span style="${chipTitle}">${_escapeHtml(title)}</span>
-</span>
-
-      `;
-        })
-        .join("");
-
-      const lessonChips =
-        u.lessons && u.lessons.length
-          ? lessonChipsInner
-          : `<span style="${chipBase};opacity:.7;background:#f8fafc">No lessons</span>`;
-
-      const rowBg = hasBgImg ? "transparent" : (ui % 2 === 0 ? "rgba(0,0,0,.02)" : page_bg);
-
-      return `
-      <tr style="background:${rowBg}">
-        <td style="padding:12px 12px;width:42px;color:#64748b;font-weight:700;">
-          ${ui + 1}.
-        </td>
-        <td style="padding:12px 12px;">
-          <div style="
-            font-weight:800;color:${text};
-            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%
-          ">
-            ${_escapeHtml(uTitle)}
-          </div>
-        </td>
-        <td style="padding:12px 12px;width:120px;text-align:right;color:${accent};font-weight:800;">
-          ${uPages} pages
-        </td>
-      </tr>
-
-      <tr style="background:${rowBg}">
-        <td></td>
-        <td colspan="2" style="padding:4px 12px 14px 12px;">
-          <div style="display:flex;flex-wrap:wrap;align-items:flex-start;max-width:100%;overflow:hidden">
-            ${lessonChips}
-          </div>
-        </td>
-      </tr>
-    `;
-    })
-    .join("");
-
-  const contentsBody = `
-  <div style="padding:8px 0 4px 0; background:${blockBg};">
-    <div style="
-      display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:0 0 8px 0;
-    ">
-      <h1 style="
-        margin:0 auto;
-        font-size:2.25rem;
-        font-weight:800;
-        color:${text};
-        text-align:center;
-        width:100%;
-      ">Contents</h1>
-    </div>
-
- <table style="
-  width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;
-  border:1px solid ${tableBd};
-  border-radius:12px;overflow:hidden;
-  background-color:${blockBg};
-  box-shadow:${hasBgImg ? 'none' : '0 2px 10px rgba(0,0,0,.03)'}">
-  <thead>
-    <tr>
-      <th style="
-        text-align:left;padding:12px 12px;width:42px;color:${accent};font-weight:800;
-        border-bottom:1px solid ${tableBd};
-        background:${hasBgImg ? 'transparent' : 'rgba(37,99,235,.06)'}">#</th>
-      <th style="
-        text-align:left;padding:12px 12px;color:${accent};font-weight:800;
-        border-bottom:1px solid ${tableBd};
-        background:${hasBgImg ? 'transparent' : 'rgba(37,99,235,.06)'}">Unit</th>
-      <th style="
-        text-align:right;padding:12px 12px;color:${accent};font-weight:800;width:120px;
-        border-bottom:1px solid ${tableBd};
-        background:${hasBgImg ? 'transparent' : 'rgba(37,99,235,.06)'}">Pages</th>
-    </tr>
-  </thead>
-  <tbody style="background:${blockBg};">
-    ${tocRows || `
-      <tr style="background:${blockBg};">
-        <td colspan="3" style="
-          padding:16px 12px;
-          color:${muted};
-          text-align:center;
-          border-top:1px dashed ${tableBd};
-          background:${blockBg};
-        ">
-          No units available
-        </td>
-      </tr>
-    `}
-  </tbody>
-</table>
-
-  </div>
-`;
-
-  wrapAuto(contentsBody, { unit: "Contents" });
-
-  units.forEach((u, ui) => {
-    const uTitle = u.title || `Unit ${ui + 1}`;
-    const uPages = u.number_of_pages ?? "—";
-    const uDesc = u.description || "";
-    const lessonChipBase = `
-  display:inline-flex;align-items:center;gap:8px;
-  padding:10px 12px;border-radius:12px;
-  background:${chipBg};
-  border:1px solid ${chipBd};
-  box-shadow:${chipShadow};
-  max-width:100%; box-sizing:border-box; margin:6px 8px 0 0
-`;
-
-    const lessonNumBadge = `
-  display:inline-grid;place-items:center;min-width:24px;height:24px;
-  padding:0 6px;border-radius:8px;
-  background:${badgeBg};
-  color:${badgeTxt};
-  font-weight:800;font-size:12px;flex:0 0 auto
-`;
-
-    const lessonTitleStyle = `
-  font-weight:700;color:${text};font-size:13px;min-width:0;max-width:100%;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
-`;
-
-
-    const lessonsChipsHTML = (u.lessons || [])
-      .map((l, li) => {
-        const num = `${ui + 1}.${li + 1}`;
-        const title = l.title || `Lesson ${li + 1}`;
-        return `
-      <div style="${lessonChipBase}">
-        <span style="${lessonNumBadge}">${num}</span>
-        <span style="${lessonTitleStyle}">${_escapeHtml(title)}</span>
-      </div>
-    `;
-      })
-      .join("");
-
-
-    const lessonsBlock =
-      u.lessons && u.lessons.length
-        ? `
-      <div style="
-        display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;
-        width:100%;box-sizing:border-box;max-width:100%;overflow:hidden
-      ">
-        ${lessonsChipsHTML}
-      </div>
-    `
-        : `<p style="margin:0;color:#64748b;">No lessons</p>`;
-
-    const unitHeroBody = [
-      `<section style="min-height:58vh;display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;background-color:${blockBg};">
-    <div style="padding:20px 16px;max-width:820px;">
-      <h1 style="margin:0 0 10px 0;font-size:2.5rem;font-weight:800;letter-spacing:.2px;color:${text};">
-        ${_escapeHtml(uTitle)}
-      </h1>
-      ${uDesc
-        ? `<p style="margin:14px auto 0;max-width:720px;color:${text};line-height:1.7;">
-             ${_escapeHtml(uDesc)}
-           </p>`
-        : ``}
-    </div>
-  </section>`,
-
-      `<div style="margin-top:18px;background:${blockBg};">
-    <div style="display:flex;align-items:center;gap:10px;margin:0 0 10px 0">
-      <h3 style="margin:0;font-size:1.125rem;font-weight:800;color:${text};">Lessons</h3>
-    </div>
-    ${lessonsBlock}
-  </div>`,
-    ].join("\n\n");
-
-    wrapAuto(unitHeroBody, { unit: uTitle });
-
-    for (let li = 0; li < (u.lessons || []).length; li++) {
-      const l = u.lessons[li];
-      const lTitle = l.title || `Lesson ${li + 1}`;
-      const lPages = l.number_of_pages ?? "—";
-      const blocks = blocksFromLesson(l);
-
-      if (blocks.length) {
-        for (let bi = 0; bi < blocks.length; bi++) {
-          const b = blocks[bi];
-
-          const titleTop =
-            bi === 0
-              ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
-             <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
-              : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(lTitle)} — Page ${bi + 1}</h3>`;
-
-          const safeHtml = stripScripts(b);
-          const body = `${titleTop}
-        <div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
-
-          wrapAuto(body, { unit: uTitle, title: lTitle });
-        }
-      } else {
-        const body = `
-      <h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(lTitle)}</h3>
-      <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>
-      <div style="color:${text}"><em>No content available yet.</em></div>`;
-
-        wrapAuto(body, { unit: uTitle, title: lTitle });
-      }
-    }
-
-  });
-
-  const total = tempPages.length;
-  return tempPages.map((html) =>
-    html.replace(/\{\{\s*total\s*\}\}/g, String(total))
-  );
-}
-
-
-/* ===========================
-   Theme Panel (+ Smart Background generator)
-=========================== */
 function ThemePanel({
   selectedThemeKey,
   setSelectedThemeKey,
@@ -2430,1061 +1478,7 @@ function ThemePanel({
 }
 
 /* ===========================
-   Editor Panel (with inline Magnification/Resize overlay)
-=========================== */
-function EditorPanel({ onClose }) {
-  const fonts = ["Arial", "Inter", "Times New Roman", "Georgia", "Roboto"];
-  const sizes = [10, 11, 12, 14, 16, 18, 20, 24];
-
-  const fileRef = React.useRef(null);
-  const [objectUrls, setObjectUrls] = React.useState([]);
-
-  const lastRangeRef = React.useRef(null);
-  const lastEditableElRef = React.useRef(null);
-
-  const [selectedImg, setSelectedImg] = React.useState(null);
-  const [imgWidth, setImgWidth] = React.useState(400);
-
-  const [overlayRect, setOverlayRect] = React.useState(null);
-  const resizingRef = React.useRef(null);
-  const draggingRef = React.useRef(null);
-
-  function saveCurrentRangeIfEditable() {
-    const sel = window.getSelection && window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const range = sel.getRangeAt(0);
-    const root = range.startContainer
-      ? (range.startContainer.nodeType === 1
-        ? range.startContainer
-        : range.startContainer.parentElement
-      )?.closest('[data-editable="true"]')
-      : null;
-    if (root) {
-      lastRangeRef.current = range.cloneRange();
-      lastEditableElRef.current = root;
-    }
-  }
-
-  function placeCaretAtEnd(el) {
-    try {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-      lastRangeRef.current = range.cloneRange();
-      lastEditableElRef.current = el;
-    } catch { }
-  }
-
-  React.useEffect(() => {
-    return () => {
-      objectUrls.forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, [objectUrls]);
-
-  React.useEffect(() => {
-    function onDocClick(e) {
-      const t = e.target;
-      if (!t) return;
-
-      const editableRoot = t.closest?.('[data-editable="true"]');
-      if (editableRoot) {
-        setTimeout(() => {
-          saveCurrentRangeIfEditable();
-          if (t.tagName === "IMG") {
-            const img = t;
-            setSelectedImg(img);
-            const w =
-              (img.style.width && parseInt(img.style.width, 10)) ||
-              Math.min(
-                img.naturalWidth || 400,
-                editableRoot.clientWidth || 720
-              );
-            setImgWidth(w);
-            updateOverlayRect(img);
-          } else {
-            setSelectedImg(null);
-            setOverlayRect(null);
-          }
-        }, 0);
-      } else {
-        setSelectedImg(null);
-        setOverlayRect(null);
-      }
-    }
-
-    function onSelectionChange() {
-      saveCurrentRangeIfEditable();
-    }
-
-    document.addEventListener("click", onDocClick);
-    document.addEventListener("selectionchange", onSelectionChange);
-    return () => {
-      document.removeEventListener("click", onDocClick);
-      document.removeEventListener("selectionchange", onSelectionChange);
-    };
-  }, []);
-
-  React.useEffect(() => {
-    function onWin() {
-      if (selectedImg) updateOverlayRect(selectedImg);
-    }
-    window.addEventListener("scroll", onWin, true);
-    window.addEventListener("resize", onWin);
-    return () => {
-      window.removeEventListener("scroll", onWin, true);
-      window.removeEventListener("resize", onWin);
-    };
-  }, [selectedImg]);
-
-  function updateOverlayRect(img) {
-    if (!img) {
-      setOverlayRect(null);
-      return;
-    }
-    const r = img.getBoundingClientRect();
-    setOverlayRect({
-      left: r.left + window.scrollX,
-      top: r.top + window.scrollY,
-      width: r.width,
-      height: r.height,
-    });
-  }
-
-  function cmd(command, value = null) {
-    try {
-      const sel = window.getSelection && window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        if (lastRangeRef.current) {
-          try {
-            sel.addRange(lastRangeRef.current);
-          } catch { }
-        }
-      }
-
-      const prevY = window.scrollY || document.documentElement.scrollTop || 0;
-
-      document.execCommand(command, false, value);
-
-      const target =
-        lastEditableElRef.current ||
-        document.activeElement?.closest?.('[data-editable="true"]') ||
-        document.querySelector('[data-editable="true"]');
-
-      if (target && target.focus) {
-        try {
-          target.focus({ preventScroll: true });
-        } catch {
-          target.focus();
-        }
-      }
-
-      if ((window.scrollY || document.documentElement.scrollTop || 0) !== prevY) {
-        window.scrollTo({ top: prevY, left: 0, behavior: "instant" in window ? "instant" : "auto" });
-      }
-
-      saveCurrentRangeIfEditable();
-    } catch { }
-  }
-
-
-  function makeLink() {
-    const url = prompt("Enter URL:");
-    if (!url) return;
-    cmd("createLink", url);
-  }
-  function setFont(e) {
-    cmd("fontName", e.target.value);
-  }
-  function setSize(e) {
-    const px = Number(e.target.value);
-    const map = { 10: 1, 11: 1, 12: 2, 14: 3, 16: 4, 18: 5, 20: 6, 24: 7 };
-    cmd("fontSize", map[px] || 3);
-  }
-  function setColor(e) {
-    cmd("foreColor", e.target.value);
-  }
-  function setHilite(e) {
-    cmd("hiliteColor", e.target.value);
-  }
-
-  const TBM_BACKEND_BASE = "https://tbmplus-backend.ultimeet.io";
-  const PRESIGN_PATH = "/api/get_presigned_url/";
-  const S3_PUBLIC_BASE = "https://tbm-plus.s3.amazonaws.com";
-
-  function s3PublicUrlFromKey(key = "") {
-    return `${S3_PUBLIC_BASE}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
-  }
-
-  async function getPresignedUrl({ fileName, fileType, folder = "internet_images" }) {
-    const url = `${TBM_BACKEND_BASE}${PRESIGN_PATH}`;
-    const body = {
-      file_name: fileName,
-      file_type: fileType || "application/image",
-      operation: "upload",
-      folder
-    };
-
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!resp.ok) {
-      const t = await resp.text().catch(() => "");
-      throw new Error(`Presign failed [${resp.status}]: ${t || "unknown error"}`);
-    }
-
-    const json = await resp.json();
-    if (!json?.success || !json?.data?.presigned_url || !json?.data?.s3_key) {
-      throw new Error("Presign response missing fields.");
-    }
-
-    return { presignedUrl: json.data.presigned_url, s3Key: json.data.s3_key };
-  }
-
-  async function putToS3(presignedUrl, file) {
-    const resp = await fetch(presignedUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-      },
-      body: file,
-    });
-    if (!resp.ok) {
-      const t = await resp.text().catch(() => "");
-      throw new Error(`S3 upload failed [${resp.status}]: ${t || "unknown error"}`);
-    }
-  }
-
-  async function insertImageFromFile(f) {
-    const editable =
-      lastEditableElRef.current ||
-      document.activeElement?.closest?.('[data-editable="true"]');
-    if (!editable || !f) return;
-
-    const blobUrl = URL.createObjectURL(f);
-    setObjectUrls((arr) => [...arr, blobUrl]);
-
-    const tempId = `tbm-up-${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
-
-    const html =
-      `<img id="${tempId}" src="${blobUrl}" class="tbm-img" ` +
-      `data-uploading="true" ` +
-      `style="max-width:100%;height:auto;width:400px;display:block;margin:8px auto;cursor:pointer;opacity:.75;outline:2px dashed #94a3b8;outline-offset:4px;" />`;
-
-    editable.focus();
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-
-    if (lastRangeRef.current) {
-      try {
-        sel?.addRange(lastRangeRef.current);
-      } catch {
-        placeCaretAtEnd(editable);
-      }
-    } else {
-      placeCaretAtEnd(editable);
-    }
-
-    try {
-      document.execCommand("insertHTML", false, html);
-    } catch {
-      editable.insertAdjacentHTML("beforeend", html);
-    }
-
-    editable.focus();
-    saveCurrentRangeIfEditable();
-
-    const tempImg = document.getElementById(tempId);
-    if (!tempImg) {
-      console.warn("Temp image element not found; leaving blob URL.");
-      return;
-    }
-
-    try {
-      const { presignedUrl, s3Key } = await getPresignedUrl({
-        fileName: f.name || "image",
-        fileType: f.type || "application/image",
-        folder: "internet_images",
-      });
-
-      await putToS3(presignedUrl, f);
-
-      const finalUrl = s3PublicUrlFromKey(s3Key);
-      tempImg.src = finalUrl;
-      tempImg.style.opacity = "1";
-      tempImg.style.outline = "none";
-      tempImg.removeAttribute("id");
-      tempImg.removeAttribute("data-uploading");
-      tempImg.dataset.s3Key = s3Key;
-      tempImg.dataset.srcOriginal = finalUrl;
-
-      try {
-        URL.revokeObjectURL(blobUrl);
-      } catch { }
-
-    } catch (err) {
-      console.error("Image upload pipeline failed:", err);
-      tempImg.style.opacity = "1";
-      tempImg.style.outline = "2px solid #ef4444";
-      tempImg.title = `Upload failed: ${err?.message || err}`;
-
-    } finally {
-      saveCurrentRangeIfEditable();
-    }
-  }
-
-  async function onFileChange(e) {
-    const f = e.target.files && e.target.files[0];
-    if (f) {
-      try {
-        await insertImageFromFile(f);
-      } finally {
-        e.target.value = "";
-      }
-    }
-  }
-
-
-  function onPickImageClick() {
-    if (fileRef.current) fileRef.current.click();
-  }
-
-
-  function beginResize(dir, e) {
-    if (!selectedImg) return;
-    e.preventDefault();
-    const r = selectedImg.getBoundingClientRect();
-    resizingRef.current = {
-      dir,
-      startX: e.pageX,
-      startY: e.pageY,
-      startW: r.width,
-      startH: r.height,
-      naturalRatio:
-        (selectedImg.naturalWidth || r.width) /
-        (selectedImg.naturalHeight || r.height),
-    };
-    document.addEventListener("mousemove", onResizing);
-    document.addEventListener("mouseup", endResize, { once: true });
-  }
-  function onResizing(e) {
-    const s = resizingRef.current;
-    if (!s || !selectedImg) return;
-    const dx = e.pageX - s.startX;
-    const dy = e.pageY - s.startY;
-    let w = s.startW,
-      h = s.startH;
-
-    if (s.dir.includes("e")) w = s.startW + dx;
-    if (s.dir.includes("w")) w = s.startW - dx;
-    if (s.dir.includes("s")) h = s.startH + dy;
-    if (s.dir.includes("n")) h = s.startH - dy;
-
-    if (e.shiftKey) {
-      const ratio = s.naturalRatio || s.startW / s.startH;
-      if (Math.abs(dx) > Math.abs(dy)) {
-        h = w / ratio;
-      } else {
-        w = h * ratio;
-      }
-    }
-
-    w = Math.max(80, w);
-    h = Math.max(80, h);
-
-    selectedImg.style.width = `${w}px`;
-    selectedImg.style.height = `${h}px`;
-    selectedImg.style.maxWidth = "none";
-
-    setImgWidth(w);
-    updateOverlayRect(selectedImg);
-  }
-  function endResize() {
-    document.removeEventListener("mousemove", onResizing);
-    resizingRef.current = null;
-    saveCurrentRangeIfEditable();
-  }
-
-  function beginDrag(e) {
-    if (!selectedImg || !overlayRect) return;
-    e.preventDefault();
-    const r = selectedImg.getBoundingClientRect();
-    draggingRef.current = {
-      startX: e.pageX,
-      startY: e.pageY,
-      startLeft: r.left + window.scrollX,
-      startTop: r.top + window.scrollY,
-    };
-    document.addEventListener("mousemove", onDragging);
-    document.addEventListener("mouseup", endDrag, { once: true });
-  }
-  function onDragging(e) {
-    const s = draggingRef.current;
-    if (!s) return;
-    const dx = e.pageX - s.startX;
-    const dy = e.pageY - s.startY;
-    setOverlayRect((rect) =>
-      rect
-        ? {
-          ...rect,
-          left: s.startLeft + dx,
-          top: s.startTop + dy,
-        }
-        : rect
-    );
-  }
-  function endDrag() {
-    document.removeEventListener("mousemove", onDragging);
-    draggingRef.current = null;
-    updateOverlayRect(selectedImg);
-  }
-
-  React.useEffect(() => {
-    if (!selectedImg) return;
-    function onWheel(e) {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
-      const currentW =
-        selectedImg.getBoundingClientRect().width || imgWidth || 400;
-      const w = Math.max(80, currentW * factor);
-      selectedImg.style.width = `${w}px`;
-      selectedImg.style.height = "auto";
-      selectedImg.style.maxWidth = "none";
-      setImgWidth(w);
-      updateOverlayRect(selectedImg);
-    }
-    function onKey(e) {
-      if (!selectedImg) return;
-      if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "=")) {
-        e.preventDefault();
-        const currentW =
-          selectedImg.getBoundingClientRect().width || imgWidth || 400;
-        const w = Math.max(80, currentW * 1.1);
-        selectedImg.style.width = `${w}px`;
-        selectedImg.style.height = "auto";
-        setImgWidth(w);
-        updateOverlayRect(selectedImg);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === "-") {
-        e.preventDefault();
-        const currentW =
-          selectedImg.getBoundingClientRect().width || imgWidth || 400;
-        const w = Math.max(80, currentW / 1.1);
-        selectedImg.style.width = `${w}px`;
-        selectedImg.style.height = "auto";
-        setImgWidth(w);
-        updateOverlayRect(selectedImg);
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "0") {
-        e.preventDefault();
-        const w = selectedImg.naturalWidth || 400;
-        selectedImg.style.width = `${w}px`;
-        selectedImg.style.height = "auto";
-        setImgWidth(w);
-        updateOverlayRect(selectedImg);
-      }
-    }
-    window.addEventListener("wheel", onWheel, { passive: false });
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [selectedImg, imgWidth]);
-
-  function Overlay() {
-    if (!selectedImg || !overlayRect) return null;
-    const { left, top, width, height } = overlayRect;
-    const boxStyle = {
-      position: "absolute",
-      left,
-      top,
-      width,
-      height,
-      border: "2px solid #2563eb",
-      borderRadius: 6,
-      boxSizing: "border-box",
-      pointerEvents: "none",
-      zIndex: 9998,
-    };
-    const handleBase = {
-      position: "absolute",
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      border: "2px solid #fff",
-      background: "#2563eb",
-      boxShadow: "0 0 0 1px #2563eb",
-      pointerEvents: "auto",
-    };
-    const mkHandle = (dir, style, cursor) => (
-      <div
-        key={dir}
-        onMouseDown={(e) => beginResize(dir, e)}
-        style={{ ...handleBase, ...style, cursor }}
-        title={`Resize ${dir.toUpperCase()} (Shift = lock ratio)`}
-      />
-    );
-
-    const handles = [
-      mkHandle("nw", { left: -6, top: -6 }, "nwse-resize"),
-      mkHandle("n", { left: width / 2 - 6, top: -6 }, "ns-resize"),
-      mkHandle("ne", { left: width - 6, top: -6 }, "nesw-resize"),
-      mkHandle("e", { left: width - 6, top: height / 2 - 6 }, "ew-resize"),
-      mkHandle("se", { left: width - 6, top: height - 6 }, "nwse-resize"),
-      mkHandle("s", { left: width / 2 - 6, top: height - 6 }, "ns-resize"),
-      mkHandle("sw", { left: -6, top: height - 6 }, "nesw-resize"),
-      mkHandle("w", { left: -6, top: height / 2 - 6 }, "ew-resize"),
-    ];
-
-    const dragBarStyle = {
-      position: "absolute",
-      left: 0,
-      top: 0,
-      width: "100%",
-      height: 24,
-      background: "rgba(37,99,235,.15)",
-      cursor: "move",
-      pointerEvents: "auto",
-      borderBottom: "1px solid rgba(37,99,235,.4)",
-    };
-
-    return ReactDOM.createPortal(
-      <>
-        <div style={boxStyle} />
-        <div
-          style={{
-            position: "absolute",
-            left,
-            top,
-            width,
-            height,
-            zIndex: 9999,
-            pointerEvents: "none",
-          }}
-        >
-          <div style={dragBarStyle} onMouseDown={beginDrag} />
-          {handles}
-        </div>
-      </>,
-      document.body
-    );
-  }
-
-  const btn = (label, onClick, title) => (
-    <button
-      onClick={onClick}
-      title={title || label}
-      style={{
-        height: 32,
-        padding: "0 10px",
-        borderRadius: 8,
-        border: "1px solid #e5e7eb",
-        background: "#fff",
-        cursor: "pointer",
-        fontWeight: 600,
-      }}
-    >
-      {label}
-    </button>
-  );
-
-  return (
-    <aside
-      style={{
-        position: "sticky",
-        top: 16,
-        alignSelf: "start",
-        height: "calc(100vh - 32px)",
-        overflow: "auto",
-        border: "1px solid #e2e8f0",
-        borderRadius: 12,
-        background: "#fff",
-        padding: 12,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>
-          Editor
-        </div>
-        {btn("Close", onClose, "Close editor panel")}
-      </div>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          onChange={onFileChange}
-          style={{ display: "none" }}
-        />
-        {btn(
-          "Insert image",
-          onPickImageClick,
-          "Insert an image at the last clicked cursor spot"
-        )}
-      </div>
-
-      <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select
-            onChange={setFont}
-            style={{
-              height: 36,
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
-              padding: "0 10px",
-            }}
-          >
-            {fonts.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-          <select
-            onChange={setSize}
-            defaultValue={16}
-            style={{
-              height: 36,
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
-              padding: "0 10px",
-            }}
-          >
-            {sizes.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          {btn("B", () => cmd("bold"), "Bold")}
-          {btn("I", () => cmd("italic"), "Italic")}
-          {btn("U", () => cmd("underline"), "Underline")}
-          {btn("S", () => cmd("strikeThrough"), "Strikethrough")}
-        </div>
-
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "#334155", width: 72 }}>Text</span>
-            <input type="color" defaultValue="#111827" onChange={setColor} />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "#334155", width: 72 }}>
-              Highlight
-            </span>
-            <input type="color" defaultValue="#ffff00" onChange={setHilite} />
-          </label>
-          {btn("Clear", () => cmd("removeFormat"), "Clear direct formatting")}
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {btn("Left", () => cmd("justifyLeft"), "Align left")}
-          {btn("Center", () => cmd("justifyCenter"), "Align center")}
-          {btn("Right", () => cmd("justifyRight"), "Align right")}
-          {btn("Justify", () => cmd("justifyFull"), "Justify")}
-          {btn("• List", () => cmd("insertUnorderedList"), "Bullet list")}
-          {btn("1. List", () => cmd("insertOrderedList"), "Numbered list")}
-          {btn("Link", makeLink, "Create link")}
-          {btn("— Indent", () => cmd("outdent"), "Outdent")}
-          {btn("+ Indent", () => cmd("indent"), "Indent")}
-        </div>
-      </div>
-
-      <Overlay />
-    </aside>
-  );
-}
-
-function DocView({
-  pages,
-  fontSize = 16,
-  deviceDimensions = { width: 2480, },
-  theme = null,
-  onPageInView = () => { },
-  editable = false,
-  imageUrl = null,
-  onImageClick = () => { },
-  bgScope = "all",
-  selectedPage = null,
-  onSelectPage = () => { },
-  bgDisabledPages = new Set(),
-  collectEditedHTMLRef,
-  showFooter = true,
-}) {
-  const A4_W = 2480;
-  const A4_H = 3508;
-  const A4_RATIO = A4_H / A4_W;
-
-  const PAGE_W = deviceDimensions.width || A4_W;
-  const PAGE_H = Math.round(PAGE_W * A4_RATIO);
-
-  const SCALE = PAGE_W / 794;
-  const px = (n) => Math.round(n * SCALE);
-  const contentRefs = React.useRef([]);
-  contentRefs.current = [];
-  const pageBg = theme?.page_bg ?? "#ffffff";
-  const bodyBg = theme?.body_bg ?? pageBg;
-  const textCol = theme?.text ?? "#1f2937";
-  const accent = theme?.accent ?? null;
-  const accent2 = theme?.accent2 ?? null;
-  const headHTML = theme?.header || "";
-  const footHTML = theme?.footer || "";
-  const bgImg = theme?.page_bg_image || null;
-
-  const HEADER_STRIPS = px(theme?.accent ? 4 : 0) + px(theme?.accent2 ? 4 : 0);
-  const FOOTER_STRIPS = showFooter ? (px(theme?.accent ? 4 : 0) + px(theme?.accent2 ? 4 : 0)) : 0;
-  const HEADER_BAR = px(40);
-  const FOOTER_BAR = showFooter ? px(40) : 0;
-  const CONTENT_VPAD = px(18) * 2;
-  const CONTENT_HPAD = px(12) * 2;
-  const BOTTOM_GAP = px(0);
-  const INNER_W = PAGE_W - CONTENT_HPAD;
-  const INNER_H = PAGE_H - (HEADER_STRIPS + FOOTER_STRIPS + HEADER_BAR + FOOTER_BAR + CONTENT_VPAD + BOTTOM_GAP);
-
-  function getMetaFromPage(html, key) {
-    const m = new RegExp(`data-${key}="([^"]*)"`, "i").exec(String(html || ""));
-    return m && m[1] ? m[1] : "";
-  }
-
-  const pageRefs = React.useRef([]);
-  pageRefs.current = [];
-
-
-
-  const hydratedOnceRef = React.useRef(new Set());
-  const dirtyRef = React.useRef(new Set());
-  const dirtyHandlersRef = React.useRef(new WeakMap());
-
-  function bindDirtyGuards(el, idx) {
-    if (!el) return;
-    if (dirtyHandlersRef.current.has(el)) return;
-    const handler = () => dirtyRef.current.add(idx);
-    ["input", "blur", "paste", "keydown"].forEach(evt => el.addEventListener(evt, handler));
-    dirtyHandlersRef.current.set(el, handler);
-  }
-
-  function unbindDirtyGuards(el) {
-    if (!el) return;
-    const handler = dirtyHandlersRef.current.get(el);
-    if (!handler) return;
-    ["input", "blur", "paste", "keydown"].forEach(evt => el.removeEventListener(evt, handler));
-    dirtyHandlersRef.current.delete(el);
-  }
-
-
-  React.useEffect(() => {
-    if (!pages?.length) return;
-    const opts = { root: null, rootMargin: "0px 0px -50% 0px", threshold: [0.33, 0.66, 1] };
-    const io = new IntersectionObserver((entries) => {
-      if (editable) return; // <-- key guard
-      let best = null;
-      for (const e of entries) {
-        if (!e.isIntersecting) continue;
-        if (!best || e.intersectionRatio > best.intersectionRatio) best = e;
-      }
-      if (best?.target?.dataset?.page) {
-        onPageInView(Number(best.target.dataset.page));
-      }
-    }, opts);
-
-    pageRefs.current.forEach((el) => el && io.observe(el));
-    return () => io.disconnect();
-  }, [pages, onPageInView, editable]);
-  React.useEffect(() => {
-    if (!editable) return;
-
-    contentRefs.current.forEach((el, idx) => {
-      if (!el) return;
-
-      bindDirtyGuards(el, idx);
-
-      if (dirtyRef.current.has(idx)) return;
-
-      const already = hydratedOnceRef.current.has(idx);
-      const nextHtml = markdownToHtml(pages[idx] || "");
-
-      if (!already) {
-        if (el.innerHTML !== nextHtml) el.innerHTML = nextHtml;
-        hydratedOnceRef.current.add(idx);
-        return;
-      }
-
-      if (el.innerHTML !== nextHtml) {
-        el.innerHTML = nextHtml;
-      }
-    });
-
-    return () => {
-      contentRefs.current.forEach(el => unbindDirtyGuards(el));
-    };
-  }, [editable, pages]);
-
-
-
-  React.useEffect(() => {
-    if (!collectEditedHTMLRef) return;
-    collectEditedHTMLRef.current = () => {
-      try {
-        if (editable && contentRefs.current?.length) {
-          return contentRefs.current.map((el) => (el ? el.innerHTML || "" : ""));
-        }
-        return (pages || []).slice();
-      } catch (e) {
-        console.warn("collectEditedHTML failed:", e);
-        return (pages || []).slice();
-      }
-    };
-
-    try {
-      if (collectEditedHTMLRef.current && !collectEditedHTMLRef.current.__initial) {
-        if (editable && contentRefs.current?.length) {
-          collectEditedHTMLRef.current.__initial = contentRefs.current.map((el) => (el ? el.innerHTML || "" : ""));
-        } else {
-          collectEditedHTMLRef.current.__initial = (pages || []).slice();
-        }
-      }
-    } catch { }
-
-    return () => {
-      if (collectEditedHTMLRef) collectEditedHTMLRef.current = null;
-    };
-  }, [editable, pages, collectEditedHTMLRef]);
-
-
-
-  return (
-    <div data-docview style={{ padding: "12px 0 24px", background: "transparent" }}>
-
-      {bgImg ? (
-        <style>{`
-          .doc-sheet .tbm-page { background-color: transparent !important; }
-          .doc-sheet .tbm-body img {
-    width: 100%;
-    height: 480px;
-    object-fit: cover; /* ya 'contain' as per need */
-  }
-
-        `}</style>
-      ) : null}
-      {imageUrl ? (
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-          <div style={{
-            width: PAGE_W,
-            aspectRatio: "210 / 297",
-            border: "1px solid #e5e7eb",
-            borderRadius: 12,
-            overflow: "hidden",
-            background: "#fff",
-            boxShadow: "0 4px 10px rgba(0,0,0,.06), 0 20px 40px rgba(0,0,0,.04)",
-          }}>
-            <img
-              src={imageUrl}
-              alt="Book Cover"
-              style={{ width: "100%", height: "100%", objectFit: "fill", display: "block", cursor: "zoom-in" }}
-              onClick={() => onImageClick(imageUrl)}
-            />
-          </div>
-        </div>
-      ) : null}
-
-
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: 16,
-          flexWrap: "wrap",
-          alignItems: "flex-start",
-        }}
-      >
-        {pages.map((page, i) => (
-          <div
-            key={i}
-            className="doc-sheet"
-            id={`page-${i + 1}`}
-            data-page={i + 1}
-            ref={(el) => (pageRefs.current[i] = el)}
-            style={{
-              width: PAGE_W,
-              height: PAGE_H,
-              boxSizing: "border-box",
-              backgroundColor: (theme?.page_bg_image ? "transparent" : pageBg),
-              outline: editable && selectedPage === i + 1 ? "2px solid #2563eb" : "none",
-              outlineOffset: 0,
-              ...(theme?.page_bg_image && (bgScope === "all" || i === 0)
-                ? (bgDisabledPages?.has?.(i)
-                  ? { backgroundImage: "none" }
-                  : {
-                    backgroundImage: `url("${theme.page_bg_image}")`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    backgroundRepeat: "no-repeat",
-                  })
-                : {
-                  backgroundImage: "none",
-                }),
-              color: textCol,
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              boxShadow:
-                "0 4px 10px rgba(0,0,0,.06), 0 20px 40px rgba(0,0,0,.04)",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-            onClick={() => {
-              if (editable) onSelectPage(i + 1);
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", backgroundColor: bgImg ? "transparent" : pageBg }}>
-              {accent ? <div style={{ height: 4, background: accent }} /> : null}
-              {accent2 ? <div style={{ height: 4, background: accent2 }} /> : null}
-              {editable && selectedPage === i + 1 ? (
-                <div style={{
-                  position: "absolute", top: 6, right: 10, zIndex: 1,
-                  background: "#2563eb", color: "#fff", borderRadius: 8, padding: "2px 8px", fontSize: 12, fontWeight: 700
-                }}>
-                  Selected
-                </div>
-              ) : null}
-              {headHTML ? (
-                <div
-                  style={{ overflow: "hidden", lineHeight: 0 }}
-                  dangerouslySetInnerHTML={{
-                    __html: renderTemplate(headHTML, {
-                      page: i + 1,
-                      total: pages.length,
-                      unit: getMetaFromPage(page, "unit"),
-                      className: getMetaFromPage(page, "class"),
-                      date: new Date().toLocaleDateString(),
-                    }),
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "8px 14px",
-                    borderBottom: "1px solid #e5e7eb",
-                    color: textCol,
-                    backgroundColor: pageBg,
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                >
-                  <span>{getMetaFromPage(page, "unit") || "—"}</span>
-                  <span>
-                    Page {i + 1} / {pages.length}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div
-              ref={(el) => (contentRefs.current[i] = el)}
-              data-editable={editable ? "true" : "false"}
-              contentEditable={editable}
-              suppressContentEditableWarning
-              style={{
-                height: INNER_H,        // ⬅️ exactly the usable height
-                overflow: "hidden",
-                padding: "18px 12px",
-                fontSize,
-                lineHeight: 1.7,
-                color: textCol,
-                backgroundColor: theme?.page_bg_image ? "transparent" : bodyBg,
-                ...(theme?.page_bg_image ? {} : {
-                  backgroundImage:
-                    "repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(0,0,0,0.02) 31px, rgba(0,0,0,0.02) 32px)"
-                }),
-              }}
-              onMouseDown={(e) => {
-                if (editable) e.currentTarget.focus();
-              }}
-              onClick={(e) => {
-                if (editable) return;
-                const t = e.target;
-                if (t && t.tagName === "IMG") {
-                  const src = t.getAttribute("src");
-                  if (src) onImageClick(src);
-                }
-              }}
-            >
-              {!editable ? <TextFormat data={page} /> : null}
-            </div>
-
-            <div style={{ height: BOTTOM_GAP, flex: "0 0 auto" }} />
-            {showFooter ? (
-              <div style={{ display: "flex", flexDirection: "column", backgroundColor: pageBg }}>
-                {footHTML ? (
-                  <div style={{ overflow: "hidden", lineHeight: 0 }}
-                    dangerouslySetInnerHTML={{ __html: renderTemplate(footHTML, { page: i + 1, total: pages.length, unit: getMetaFromPage(page, "unit"), className: getMetaFromPage(page, "class"), date: new Date().toLocaleDateString(), }) }} />
-                ) : (
-                  <div style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "8px 14px", borderTop: "1px solid #e5e7eb",
-                    color: textCol, backgroundColor: bgImg ? "transparent" : pageBg,
-                    fontSize: 12, fontWeight: 600
-                  }}>
-                    <span>{getMetaFromPage(page, "unit") || "—"}</span>
-                    <span>Page {i + 1} / {pages.length}</span>
-                    <span>{getMetaFromPage(page, "class") || "—"}</span>
-                  </div>
-                )}
-                {accent2 ? <div style={{ height: 4, background: accent2 }} /> : null}
-                {accent ? <div style={{ height: 4, background: accent }} /> : null}
-              </div>
-            ) : null}
-          </div>
-        ))}
-      </div>
-
-      <style>{`
-  [data-editable="true"] img, .doc-sheet img { cursor: zoom-in; }
-
-  @media (max-width: 768px) {
-    div[data-docview] { padding: 8px 0 16px; }
-  }
-    .doc-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @media print {
-    body { background: #fff !important; }
-    * { box-shadow: none !important; }
-    .doc-sheet {
-      page-break-after: always;
-      border: none !important;
-      border-radius: 0 !important;
-      width: auto !important;
-      min-height: auto !important;
-      box-shadow: none !important;
-      background-color: #ffffff !important;
-      color: #000000 !important;
-    }
-  }
-  `}</style>
-    </div>
-  );
-}
-/* ===========================
-  Page Component
+   Page Component
 =========================== */
 export default function BookDetailsPage() {
   const { id } = useParams();
@@ -3494,8 +1488,7 @@ export default function BookDetailsPage() {
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [zoomSrc, setZoomSrc] = React.useState("");
-  const themeKeys = React.useMemo(() => Object.keys(pageThemes || {}), [pageThemes]);
-
+  const themeKeys = React.useMemo(() => Object.keys(pageThemes || {}), []);
   const [coverFile, setCoverFile] = React.useState(null);
   const [savingCover, setSavingCover] = React.useState(false);
   const [selectedThemeKey, setSelectedThemeKey] = React.useState("");
@@ -3511,70 +1504,17 @@ export default function BookDetailsPage() {
   const tocRef = React.useRef(null);
   const [contentIds, setContentIds] = React.useState([]);
   const [primaryContentId, setPrimaryContentId] = React.useState(null);
-
   const [topImageUrl, setTopImageUrl] = React.useState("");
 
-
-
-  // ---- state ----
+  // Export state
   const [exporting, setExporting] = React.useState(false);
   const [exportNote, setExportNote] = React.useState("");
   const [fastMode, setFastMode] = React.useState(true);
-  const ULTRA_FAST = true;
-  const JPEG_QUALITY = ULTRA_FAST ? 0.78 : (fastMode ? 0.82 : 0.92);
-
 
   function freezeForExport() { document.body.classList.add("tbm-printing", "tbm-exporting"); try { window.scrollTo({ top: 0, behavior: "instant" }); } catch { } }
   function unfreezeAfterExport() { document.body.classList.remove("tbm-printing", "tbm-exporting"); }
+  async function waitForFonts() { try { if (document?.fonts?.ready) await document.fonts.ready; } catch { } }
 
-  async function waitForImages(root) {
-    const imgs = Array.from(root.querySelectorAll("img"));
-    await Promise.all(imgs.map(img =>
-      (img.complete && img.naturalWidth > 0) ? Promise.resolve()
-        : new Promise(res => { const done = () => res(); img.addEventListener("load", done, { once: true }); img.addEventListener("error", done, { once: true }); })
-    ));
-  }
-
-  async function inlineExternalAssets(root) {
-    const revokers = [];
-    const imgs = Array.from(root.querySelectorAll("img"));
-    await Promise.all(imgs.map(async img => {
-      const src = img.getAttribute("src");
-      if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
-      try {
-        const r = await fetch(src, { mode: "cors", credentials: "omit", cache: "force-cache" });
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        img.setAttribute("data-old-src", src);
-        img.setAttribute("crossorigin", "anonymous");
-        img.src = url;
-        revokers.push(() => { try { URL.revokeObjectURL(url); } catch { } const old = img.getAttribute("data-old-src"); if (old) { img.src = old; img.removeAttribute("data-old-src"); } });
-      } catch {
-        if (!img.getAttribute("crossorigin")) img.setAttribute("crossorigin", "anonymous");
-      }
-    }));
-    const nodes = Array.from(root.querySelectorAll("*")).filter(n => {
-      const bg = getComputedStyle(n).backgroundImage || "";
-      return bg.startsWith('url("http') || bg.startsWith("url('http");
-    });
-    await Promise.all(nodes.map(async node => {
-      const bg = getComputedStyle(node).backgroundImage;
-      const m = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/i.exec(bg);
-      if (!m) return;
-      try {
-        const r = await fetch(m[2], { mode: "cors", credentials: "omit", cache: "force-cache" });
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        const blob = await r.blob();
-        const objUrl = URL.createObjectURL(blob);
-        const prev = node.style.backgroundImage;
-        node.setAttribute("data-old-bg", prev || "");
-        node.style.backgroundImage = `url("${objUrl}")`;
-        revokers.push(() => { try { URL.revokeObjectURL(objUrl); } catch { } const old = node.getAttribute("data-old-bg"); if (old != null) { node.style.backgroundImage = old; node.removeAttribute("data-old-bg"); } });
-      } catch { }
-    }));
-    return () => revokers.forEach(fn => fn());
-  }
 
   let _libOnce;
   function loadScriptOnce(url) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = url; s.async = true; s.crossOrigin = "anonymous"; s.onload = () => res(true); s.onerror = () => rej(new Error("load failed: " + url)); document.head.appendChild(s); }); }
@@ -3592,245 +1532,280 @@ export default function BookDetailsPage() {
     })();
     return _libOnce;
   }
-  const TINY_TRANSPARENT_PNG =
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA" +
-    "AAC0lEQVR42mP8/x8AAwMCAO4i+o4AAAAASUVORK5CYII=";
+  // --- Helpers: collect & prefetch external assets, and swap them in the clone ---
+  function collectAssetUrls(rootNode) {
+    const urls = new Set();
 
-  function isLikelyValidSrc(src = "") {
-    const s = String(src || "").trim();
-    if (!s) return false;
-    if (/^data:image\//i.test(s)) return true;
-    if (/^blob:/i.test(s)) return true;
-    if (/^https?:\/\//i.test(s) && !/[<>]/.test(s)) return true;
-    return false;
-  }
-
-  function fixWeirdImgSrc(src = "") {
-    let s = String(src || "").trim();
-    if (/[<>]/.test(s) || /%3C/i.test(s) || /%3E/i.test(s)) return null;
-    s = s.replace(/\s+/g, "");
-    return isLikelyValidSrc(s) ? s : null;
-  }
-  async function sanitizeImagesForExport(root) {
-    const imgs = Array.from(root.querySelectorAll("img"));
-    let fixed = 0, replaced = 0;
-    imgs.forEach(img => {
-      const raw = img.getAttribute("src") || "";
-      const clean = fixWeirdImgSrc(raw);
-      if (!clean) {
-        img.setAttribute("data-old-src", raw);
-        img.src = TINY_TRANSPARENT_PNG;
-        replaced++;
-        return;
+    // <img src=...>
+    rootNode.querySelectorAll("img[src]").forEach(img => {
+      const src = (img.getAttribute("src") || "").trim();
+      if (src && /^https?:\/\//i.test(src) && !src.startsWith("data:") && !src.startsWith("blob:")) {
+        urls.add(src);
       }
-      if (clean !== raw) {
-        img.setAttribute("data-old-src", raw);
-        img.src = clean;
-        fixed++;
+    });
+
+    // CSS background-image: url(...)
+    const all = Array.from(rootNode.querySelectorAll("*"));
+    all.forEach(node => {
+      const bg = getComputedStyle(node).backgroundImage || "";
+      const m = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/i.exec(bg);
+      if (m && m[2] && !m[2].startsWith("data:") && !m[2].startsWith("blob:")) {
+        urls.add(m[2]);
       }
-      if (!img.getAttribute("crossorigin")) img.setAttribute("crossorigin", "anonymous");
-      img.decoding = "sync";
-      img.loading = "eager";
-      img.referrerPolicy = "no-referrer";
     });
-    console.info(`[EXPORT] image sanitize → fixed=${fixed}, placeholders=${replaced}, total=${imgs.length}`);
+
+    return Array.from(urls);
   }
-  function ms(n) { return `${Math.round(n)}ms`; }
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.setAttribute('data-tbm-global', '1');
+    style.textContent = `
+    body.tbm-fixed, body.tbm-printing, body.tbm-exporting { overflow: hidden !important; }
+  `;
+    document.head.appendChild(style);
+    document.body.classList.add('tbm-fixed');
+    return () => {
+      document.body.classList.remove('tbm-fixed');
+      try { document.head.removeChild(style); } catch { }
+    };
+  }, []);
 
+  async function prefetchAssetsToBlob(urls) {
+    const map = new Map(); // originalURL => blobURL
+    const revokers = [];
 
-  const yieldNow = () => new Promise(r => setTimeout(r, 0));
-  const yieldIdle = () =>
-    new Promise(r => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 200 }) : setTimeout(r, 16)));
+    await Promise.all(urls.map(async (u) => {
+      try {
+        // key trick: omit credentials so S3 can reply with CORS for anon GET
+        const r = await fetch(u + (u.includes("?") ? "&" : "?") + "_cachebust=" + Date.now(), {
+          mode: "cors",
+          credentials: "omit",
+          cache: "force-cache",
+          referrerPolicy: "no-referrer",
+        });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const b = await r.blob();
+        const objUrl = URL.createObjectURL(b);
+        map.set(u, objUrl);
+        revokers.push(() => { try { URL.revokeObjectURL(objUrl); } catch { } });
+      } catch (e) {
+        // leave it unmapped; html2canvas may still fetch via CORS if bucket allows it
+        console.warn("[prefetch] failed", u, e?.message || e);
+      }
+    }));
 
-  function ms(n) { return `${Math.round(n)}ms`; }
-
-  function ensureStagingRoot() {
-    let root = document.getElementById("tbm-export-staging");
-    if (!root) {
-      root = document.createElement("div");
-      root.id = "tbm-export-staging";
-      Object.assign(root.style, {
-        position: "fixed",
-        left: "-99999px",
-        top: "0",
-        width: "794px",
-        minHeight: "1123px",
-        overflow: "hidden",
-        zIndex: "-1",
-        background: "transparent",
-        contain: "content"
-      });
-      document.body.appendChild(root);
-    }
-    return root;
+    return { urlMap: map, revokeAll: () => revokers.forEach(fn => fn()) };
   }
 
-  function makeIsolatedClone(sourceEl) {
-    const staging = ensureStagingRoot();
-    staging.innerHTML = "";
-    const clone = sourceEl.cloneNode(true);
-    clone.classList.add("tbm-exporting");
-    staging.appendChild(clone);
-    return { staging, clone };
-  }
-
-  async function withWatchdog(promiseFactory, timeoutMs) {
-    let timer;
-    const timeout = new Promise((_, rej) => {
-      timer = setTimeout(() => rej(new Error("timeout")), timeoutMs);
+  function loadScriptOnce(url) {
+    return new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = url; s.async = true; s.crossOrigin = "anonymous";
+      s.onload = () => res(true);
+      s.onerror = () => rej(new Error("load failed: " + url));
+      document.head.appendChild(s);
     });
-    try {
-      const res = await Promise.race([promiseFactory(), timeout]);
-      clearTimeout(timer);
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      throw e;
-    }
   }
+  async function ensureCanvasAndPdfLibs() {
+    if (_libOnce) return _libOnce;
+    _libOnce = (async () => {
+      if (window.html2canvas && window.jspdf?.jsPDF) return;
+      const plans = [
+        async () => { await loadScriptOnce("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"); await loadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"); },
+        async () => { await loadScriptOnce("https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"); await loadScriptOnce("https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"); },
+        async () => { await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"); await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"); },
+      ];
+      let err = null;
+      for (const p of plans) { try { await p(); if (window.html2canvas && window.jspdf?.jsPDF) return; } catch (e) { err = e; } }
+      throw err || new Error("Libraries could not be loaded");
+    })();
+    return _libOnce;
+  }
+
+
 
   async function handleExportPDFDirect() {
     if (exporting) return;
     const root = document.querySelector('[data-docview]');
-    if (!root) return alert("Document not found");
+    if (!root) { alert("Document not found"); return; }
 
     setExporting(true);
     setExportNote("Loading export libraries…");
-    const tLibs = performance.now();
     await ensureCanvasAndPdfLibs();
-    console.log(`[EXPORT] libs ready in ${ms(performance.now() - tLibs)}`);
 
     const html2canvas = window.html2canvas;
     const jsPDF = window.jspdf.jsPDF;
 
-    const pagesEls = Array.from(root.querySelectorAll('.doc-sheet'));
-    if (!pagesEls.length) { setExporting(false); return alert("No pages found"); }
+    setExportNote("Prefetching images…");
+    const urls = collectAssetUrls(root);
+    const { urlMap, revokeAll } = await prefetchAssetsToBlob(urls);
 
-    freezeForExport();
-    await sanitizeImagesForExport(root);
-    const ULTRA_FAST = true;
-    const restore = ULTRA_FAST ? null : await inlineExternalAssets(root);
+    const jpegQuality = fastMode ? 0.82 : 0.92;
 
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-    const pageWmm = pdf.internal.pageSize.getWidth();
-    const pageHmm = pdf.internal.pageSize.getHeight();
-
-    const BASE = {
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: null,
-      letterRendering: false,
-      logging: false,
-      scrollX: 0, scrollY: 0,
-      removeContainer: true,
-      onclone: (doc) => {
-        doc.body.classList.add("tbm-printing", "tbm-exporting");
-        try { sanitizeImagesForExport(doc); } catch { }
-      }
-    };
-
-    const SCALES = [1.0, 0.9, 0.8, 0.7];
-
-    const PAGE_TIMEOUT_MS = 4500;
-
-    const total = pagesEls.length;
-    const t0 = performance.now();
-    const times = [];
-
-    for (let i = 0; i < total; i++) {
-      const start = performance.now();
-      console.log(`[EXPORT] ▶ page ${i + 1}/${total}`);
-
-      setExportNote(`Rendering page ${i + 1} / ${total}…`);
-
-      await yieldNow();
-
-      const { staging, clone } = makeIsolatedClone(pagesEls[i]);
+    const getOrientation = (w, h) => (w >= h ? "landscape" : "portrait");
 
 
-      await waitForImages(clone);
+    let pdf = null;
 
-      let canvas = null;
-      let lastErr = null;
+    try {
+      setExportNote("Preparing pages…");
+      freezeForExport();
 
-      for (const scale of SCALES) {
-        try {
-          canvas = await withWatchdog(
-            () => html2canvas(clone, { ...BASE, scale }),
-            PAGE_TIMEOUT_MS
-          );
-          console.log(`[EXPORT] page ${i + 1} rendered at scale=${scale}`);
-          break;
-        } catch (e) {
-          lastErr = e;
-          console.warn(`[EXPORT] page ${i + 1} retry with lower scale; reason=${e.message}`);
+      const pagesEls = Array.from(root.querySelectorAll(".doc-sheet"));
+      if (!pagesEls.length) throw new Error("No pages found");
 
-          await yieldIdle();
+      if (!fastMode) await waitForFonts();
+
+      // Scale only for render quality, not to fit A4
+      const baseScale =
+        pagesEls.length > 150 ? 0.9 :
+          pagesEls.length > 120 ? 1.0 :
+            pagesEls.length > 80 ? 1.2 :
+              pagesEls.length > 40 ? 1.4 : 1.8;
+
+      const isHeavy = (el) => {
+        const textLen = (el.innerText || "").length;
+        const media = el.querySelectorAll("img,svg,canvas,video").length;
+        return textLen > 2500 || media > 6;
+      };
+
+      let firstPageSize = null; // {w,h,orientation}
+      for (let i = 0; i < pagesEls.length; i++) {
+        setExportNote(`Rendering page ${i + 1} / ${pagesEls.length}…`);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const el = pagesEls[i];
+        const scale = (fastMode && isHeavy(el)) ? Math.max(0.8, Math.min(baseScale, 1.1)) : baseScale;
+
+        const canvas = await html2canvas(el, {
+          scale,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: null,
+          letterRendering: false,
+          scrollX: 0,
+          scrollY: 0,
+          imageTimeout: 0,
+          removeContainer: true,
+          onclone: (doc) => {
+            // keep your existing onclone, and add:
+            // force white background for any transparent page
+            doc.documentElement.style.background = '#ffffff';
+            doc.body.style.background = '#ffffff';
+            doc.body.style.overflow = 'hidden';
+
+            // ensure images load eagerly in the clone
+            doc.querySelectorAll('img[src]').forEach((img) => {
+              const raw = (img.getAttribute('src') || '').trim();
+              img.loading = 'eager';
+              img.decoding = 'sync';
+              img.crossOrigin = 'anonymous';
+              img.setAttribute('crossorigin', 'anonymous');
+
+              // if we prefetched a blob for this URL, swap it
+              if (urlMap.has(raw)) {
+                img.setAttribute('data-old-src', raw);
+                img.src = urlMap.get(raw);
+              }
+            });
+
+            // background-image URL swaps (keep your existing code)
+            const all = Array.from(doc.querySelectorAll('*'));
+            all.forEach((node) => {
+              const cs = doc.defaultView.getComputedStyle(node);
+              const bg = cs.backgroundImage || '';
+              const m = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/i.exec(bg);
+              if (m && urlMap.has(m[2])) {
+                node.setAttribute('data-old-bg', node.style.backgroundImage || '');
+                node.style.backgroundImage = `url("${urlMap.get(m[2])}")`;
+              }
+            });
+          },
+        });
+
+
+        const cW = canvas.width;   // pixel width of rendered page
+        const cH = canvas.height;  // pixel height of rendered page
+        const orientation = getOrientation(cW, cH);
+        if (!firstPageSize) firstPageSize = { w: cW, h: cH, orientation };
+        // Initialize PDF with the FIRST page's exact pixel size (NOT A4)
+        if (!pdf) {
+          pdf = new jsPDF({
+            unit: "px",
+            format: [cW, cH],
+            orientation,
+          });
+        } else {
+          // For subsequent pages, add a page with that page's exact size
+          pdf.addPage([cW, cH], orientation);
+        }
+
+        const imgData = canvas.toDataURL("image/jpeg", jpegQuality);
+        // Place image at 0,0 with SAME pixel dims as canvas, so no resizing
+        pdf.addImage(imgData, "JPEG", 0, 0, cW, cH);
+
+        if (pagesEls.length > 60) {
+          try { canvas.width = canvas.height = 0; } catch { }
         }
       }
 
-      if (!canvas) {
-        console.error(`[EXPORT] page ${i + 1} failed, inserting blank page.`);
-        const tmp = document.createElement("canvas");
-        tmp.width = 794; tmp.height = 1123;
-        const ctx = tmp.getContext("2d");
-        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, tmp.width, tmp.height);
-        ctx.fillStyle = "#e11d48";
-        ctx.font = "16px sans-serif";
-        ctx.fillText("Page failed to render", 24, 36);
-        canvas = tmp;
+      if (finalCoverSrc && firstPageSize) {
+        setExportNote("Adding cover…");
+        const { w: cW, h: cH, orientation } = firstPageSize;
+        // load image to dataURL (covers blob:, data:, http(s))
+        const imgEl = await new Promise((resolve, reject) => {
+          const img = new Image();
+          try { img.crossOrigin = "anonymous"; } catch { }
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("Cover image load failed"));
+          img.src = finalCoverSrc;
+        });
+        // draw it to an offscreen canvas sized exactly like the pages
+        const can = document.createElement("canvas");
+        can.width = cW;
+        can.height = cH;
+        const ctx = can.getContext("2d");
+        // contain-fit with letterbox
+        const scale = Math.min(cW / imgEl.width, cH / imgEl.height);
+        const w = Math.round(imgEl.width * scale);
+        const h = Math.round(imgEl.height * scale);
+        const x = Math.round((cW - w) / 2);
+        const y = Math.round((cH - h) / 2);
+        ctx.fillStyle = "#ffffff"; // white background for safety
+        ctx.fillRect(0, 0, cW, cH);
+        ctx.drawImage(imgEl, x, y, w, h);
+        const coverData = can.toDataURL("image/jpeg", jpegQuality);
+
+        pdf.addPage([cW, cH], orientation);
+        const last = pdf.getNumberOfPages();
+        pdf.setPage(last);
+        pdf.addImage(coverData, "JPEG", 0, 0, cW, cH);
+        // move it to the beginning
+        if (typeof pdf.movePage === "function") {
+          pdf.movePage(last, 1);
+          pdf.setPage(pdf.getNumberOfPages()); // reset to last so subsequent ops stay safe
+        }
       }
 
-      const imgData = canvas.toDataURL("image/jpeg", 0.8);
-      if (i > 0) pdf.addPage();
-      pdf.addImage(imgData, "JPEG", 0, 0, pageWmm, pageHmm);
-
-      try { canvas.width = canvas.height = 0; } catch { }
-      try { staging.innerHTML = ""; } catch { }
-
-      const dt = performance.now() - start;
-      times.push(dt);
-      const avg = times.reduce((a, b) => a + b, 0) / times.length;
-      const left = total - (i + 1);
-      const eta = left * avg;
-      console.log(`[EXPORT] page ${i + 1}/${total}: ${ms(dt)} | avg ${ms(avg)} | ETA ${ms(eta)}`);
-      setExportNote(`Page ${i + 1}/${total} done • avg ${ms(avg)} • ETA ${ms(eta)}`);
-
-
-      await yieldIdle();
+      const filename = `${(book?.title || "book").replace(/[^\w\d\-]+/g, "_")}.pdf`;
+      setExportNote("Finalizing…");
+      pdf.save(filename);
+    } catch (e) {
+      console.error("PDF export failed:", e);
+      alert("PDF export failed: " + (e?.message || "Unknown error"));
+    } finally {
+      try { revokeAll(); } catch { }
+      unfreezeAfterExport();
+      setExportNote("");
+      setExporting(false);
     }
-
-    const filename = `${(book?.title || "book").replace(/[^\w\d\-]+/g, "_")}.pdf`;
-    const tSave = performance.now();
-    setExportNote("Finalizing…");
-    pdf.save(filename);
-    console.log(`[EXPORT] pdf.save took ${ms(performance.now() - tSave)}`);
-
-    const totalMs = performance.now() - t0;
-    console.log(`[EXPORT] ✅ DONE in ${ms(totalMs)} for ${total} pages`);
-
-    try { restore?.(); } catch { }
-    unfreezeAfterExport();
-    setExportNote("");
-    setExporting(false);
   }
 
 
 
-  const [apply, setApply] = React.useState({
-    page_bg: true,
-    text: true,
-    accent: true,
-    accent2: true,
-  });
-
-  const [custom, setCustom] = React.useState({
-    page_bg: "",
-    text: "",
-    accent: "",
-    accent2: "",
-  });
-
+  // theme apply state for ThemePanel
+  const [apply, setApply] = React.useState({ page_bg: true, text: true, accent: true, accent2: true });
+  const [custom, setCustom] = React.useState({ page_bg: "", text: "", accent: "", accent2: "" });
   const [svgColorMap, setSvgColorMap] = React.useState({});
 
   React.useEffect(() => {
@@ -3844,23 +1819,12 @@ export default function BookDetailsPage() {
 
   const effectiveTheme = React.useMemo(() => {
     if (!currentTheme) return null;
-    const defaults = {
-      page_bg: "#f8fafc",
-      text: "#0f172a",
-      accent: undefined,
-      accent2: undefined,
-    };
+    const defaults = { page_bg: "#f8fafc", text: "#0f172a", accent: undefined, accent2: undefined };
 
-    const pageBG = apply.page_bg
-      ? custom.page_bg || currentTheme.page_bg
-      : defaults.page_bg;
+    const pageBG = apply.page_bg ? custom.page_bg || currentTheme.page_bg : defaults.page_bg;
     const text = apply.text ? custom.text || currentTheme.text : defaults.text;
-    const accent = apply.accent
-      ? custom.accent || currentTheme.accent
-      : defaults.accent;
-    const accent2 = apply.accent2
-      ? custom.accent2 || currentTheme.accent2
-      : defaults.accent2;
+    const accent = apply.accent ? custom.accent || currentTheme.accent : defaults.accent;
+    const accent2 = apply.accent2 ? custom.accent2 || currentTheme.accent2 : defaults.accent2;
 
     const baseMap = {};
     if (currentTheme.page_bg) baseMap[currentTheme.page_bg] = pageBG;
@@ -3886,6 +1850,7 @@ export default function BookDetailsPage() {
       page_bg_image: pageBgImage || undefined,
     };
   }, [currentTheme, apply, custom, svgColorMap, pageBgImage]);
+
   const handleApplyBgUrl = React.useCallback((url) => {
     setPageBgImage(url);
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
@@ -3902,155 +1867,35 @@ export default function BookDetailsPage() {
   const handlePickImage = React.useCallback((file) => {
     const url = URL.createObjectURL(file);
     setTopImageUrl((prev) => {
-      if (prev && prev.startsWith("blob:")) {
-        try { URL.revokeObjectURL(prev); } catch { }
-      }
+      if (prev && prev.startsWith("blob:")) { try { URL.revokeObjectURL(prev); } catch { } }
       return url;
     });
     setCoverFile(file);
   }, []);
-
-
-
-
-
-  function _extractBody(html = "") {
-    const m = /<div\s+class=["']tbm-body["'][^>]*>([\s\S]*?)<\/div>/i.exec(String(html));
-    return m ? m[1] : "";
-  }
-
-  function _replaceBody(html = "", newInner = "") {
-    return String(html).replace(
-      /(<div\s+class=["']tbm-body["'][^>]*>)[\s\S]*?(<\/div>)/i,
-      (_, open, close) => `${open}${newInner}${close}`
-    );
-  }
-
-  function splitPageHTMLByHeight(pageHtml, { width, height, fontSize = 16, lineHeight = 1.7 }) {
-    const bodyInner = _extractBody(pageHtml);
-    const chunks = paginateHTMLIntoA4(bodyInner, {
-      width,
-      maxHeight: height,
-      fontSize: DOC_FONT,
-      lineHeight: DOC_LINE_HEIGHT,
-    });
-    if (!Array.isArray(chunks) || chunks.length <= 1) return [pageHtml];
-    return chunks.map(chunk => _replaceBody(pageHtml, chunk));
-  }
-
-
   const handlePickImageUrl = React.useCallback((url) => {
     setTopImageUrl((prev) => {
-      if (prev && prev.startsWith("blob:")) {
-        try { URL.revokeObjectURL(prev); } catch { }
-      }
+      if (prev && prev.startsWith("blob:")) { try { URL.revokeObjectURL(prev); } catch { } }
       return url;
     });
     setCoverFile(null);
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   }, []);
 
-  const rawPages = React.useMemo(
-    () => bookToPagesWithTheme(book, effectiveTheme),
-    [book, effectiveTheme]
-  );
+  const pages = React.useMemo(() => bookToPagesWithTheme(book, effectiveTheme), [book, effectiveTheme]);
 
-  const pages = React.useMemo(() => {
-    // A4 usable content box (header/footer हटाकर real body height)
-    const { width, height } = measureA4ContentBox();  // typically ~770 x ~940
-    const out = [];
-    for (const p of (rawPages || [])) {
-      const parts = splitPageHTMLByHeight(p, { width, height, fontSize: 16, lineHeight: 1.7 });
-      out.push(...parts);
-    }
-    return out;
-  }, [rawPages]);
-
-
-
-  // ⬇️ helper: page ke .tbm-body ka innerHTML nikaalo
-  function extractBodyHTML(pageHtml = "") {
-    const tmp = document.createElement("div");
-    tmp.innerHTML = String(pageHtml || "");
-    const el = tmp.querySelector(".tbm-body");
-    return el ? el.innerHTML : String(pageHtml || "");
-  }
-
-  // ⬇️ helper: plain text (tags hata ke)
-  function toPlainText(html = "") {
-    return String(html || "")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  // ⬇️ pages change hote hi console me print
-  React.useEffect(() => {
-    if (!Array.isArray(pages) || !pages.length) return;
-
-    console.groupCollapsed(`[TBM] Pages ready • total=${pages.length}`);
-
-    pages.forEach((html, idx) => {
-      // meta (tumhare readMeta already present hai upar)
-      const meta = readMeta ? readMeta(html) : {};
-      const unit = meta?.unit || "";
-      const title = meta?.title || "";
-
-      // body HTML + plain text
-      const bodyHTML = extractBodyHTML(html);
-      const bodyTEXT = toPlainText(bodyHTML);
-
-      console.groupCollapsed(
-        `Page ${idx + 1}/${pages.length}` +
-        (unit ? ` • unit: ${unit}` : "") +
-        (title ? ` • title: ${title}` : "")
-      );
-      console.log("HTML:", bodyHTML);    // pura body HTML
-      console.log("TEXT:", bodyTEXT);    // plain text (agar chaho to substring bhi le sakte ho)
-      console.groupEnd();
-    });
-
-    // quick overview table
-    const rows = pages.map((html, idx) => {
-      const meta = readMeta ? readMeta(html) : {};
-      const body = extractBodyHTML(html);
-      return {
-        page: idx + 1,
-        unit: meta?.unit || "",
-        title: meta?.title || "",
-        chars: toPlainText(body).length
-      };
-    });
-    console.table(rows);
-
-    console.groupEnd();
-  }, [pages]);
-
-
+  // load book
   React.useEffect(() => {
     let mounted = true;
     setLoading(true);
-
     (async () => {
       try {
         const res = await jfetch(`/api/books/${bookId}/`);
         if (!mounted) return;
-
         const B = res?.data ?? res;
         setBook(B ?? null);
         setError("");
-
-        console.groupCollapsed("[THEME] API payload");
-        console.log("book.theme_json:", B?.theme_json);
-        console.log("book.theme_json.id:", B?.theme_json?.id);
-        console.groupEnd();
         const all = collectAllContentIdsFromBook(B);
         setContentIds(all);
-        console.groupCollapsed("[CID] all content ids (payload)");
-        console.table(all);
-        console.groupEnd();
       } catch (e) {
         if (!mounted) return;
         console.error("Book load failed:", e);
@@ -4061,10 +1906,8 @@ export default function BookDetailsPage() {
         if (mounted) setLoading(false);
       }
     })();
-
     return () => { mounted = false; };
   }, [bookId]);
-
 
   React.useEffect(() => {
     userPickedRef.current = false;
@@ -4075,33 +1918,17 @@ export default function BookDetailsPage() {
     const apiThemeId = book?.theme_json?.id ? String(book.theme_json.id).trim() : "";
     const available = themeKeys || [];
     if (!available.length) return;
-
     const matchKey = findKeyByThemeId(pageThemes, apiThemeId);
-
-    console.groupCollapsed("[THEME] Sync effect");
-    console.log("apiThemeId:", apiThemeId);
-    console.log("available keys:", available);
-    console.log("matchKey (by .id):", matchKey);
-    console.log("userPickedRef:", userPickedRef.current);
-    console.groupEnd();
-
     setSelectedThemeKey((prev) => {
       if (userPickedRef.current) return prev;
-
       if (matchKey) return matchKey;
-
       if (apiThemeId && available.includes(apiThemeId)) return apiThemeId;
-
       if (!prev) return available[0] || "theme1";
-
       return prev;
     });
-  }, [book?.theme_json?.id, themeKeys, pageThemes]);
-
-
+  }, [book?.theme_json?.id, themeKeys]);
 
   const userPickedRef = React.useRef(false);
-
   function findKeyByThemeId(pageThemesObj, apiId) {
     if (!apiId) return null;
     for (const k of Object.keys(pageThemesObj || {})) {
@@ -4111,17 +1938,12 @@ export default function BookDetailsPage() {
     return null;
   }
 
-
-
-
-
   React.useEffect(() => {
     (async () => {
       if (!book) return;
       if (Array.isArray(contentIds) && contentIds.length) return;
       try {
         const ids = await resolveAllContentIds({ bookId, book });
-        console.log("[CID] resolved fallback →", ids);
         setContentIds(ids);
       } catch (e) {
         console.warn("Could not resolve content ids:", e?.message || e);
@@ -4129,15 +1951,8 @@ export default function BookDetailsPage() {
     })();
   }, [book, contentIds?.length, bookId]);
 
-
-  React.useEffect(() => {
-    if (contentIds) console.log("[CID] state →", contentIds);
-  }, [contentIds]);
   const pageIndex = React.useMemo(() => {
-    return (pages || []).map((p, i) => {
-      const meta = readMeta(p);
-      return { page: i + 1, ...meta };
-    });
+    return (pages || []).map((p, i) => ({ page: i + 1, ...readMeta(p) }));
   }, [pages]);
 
   const groupedTOC = React.useMemo(() => {
@@ -4151,15 +1966,11 @@ export default function BookDetailsPage() {
     });
     return Array.from(map.entries()).map(([unitTitle, lessonsMap]) => ({
       unit: unitTitle,
-      lessons: Array.from(lessonsMap.entries()).map(([title, firstPage]) => ({
-        title,
-        firstPage,
-      })),
+      lessons: Array.from(lessonsMap.entries()).map(([title, firstPage]) => ({ title, firstPage })),
     }));
   }, [pageIndex]);
 
   const [currentPage, setCurrentPage] = React.useState(1);
-
   const activePointer = React.useMemo(() => {
     let active = { unit: "", title: "", firstPage: 1 };
     groupedTOC.forEach((u) => {
@@ -4177,7 +1988,6 @@ export default function BookDetailsPage() {
   React.useEffect(() => {
     const id = activePointer?.firstPage ? `toc-${activePointer.firstPage}` : "";
     const el = id ? document.getElementById(id) : null;
-    // Ensure we only scroll the TOC's own scroll container, not the whole page.
     if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
   }, [activePointer]);
 
@@ -4186,7 +1996,6 @@ export default function BookDetailsPage() {
       <div style={{ color: "#1f2937", fontWeight: 600 }}>Loading book…</div>
     </div>
   );
-
   const ErrorScreen = ({ error }) => (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0B0D10", color: "#fff" }}>
       <div>
@@ -4198,25 +2007,14 @@ export default function BookDetailsPage() {
     </div>
   );
 
+  const containerStyle = { minHeight: "100vh", color: "#0f172a", background: "#f8fafc", transition: "all 0.3s ease" };
 
-  const containerStyle = {
-    minHeight: "100vh",
-    color: "#0f172a",
-    background: "#f8fafc",
-    transition: "all 0.3s ease",
-  };
-
-  /* =========================
-    BOOK CONTENT SAVE HELPERS
-    ========================= */
   function pickId(v) {
     if (v == null) return null;
     if (typeof v === "string" || typeof v === "number") return String(v);
-    if (typeof v === "object")
-      return v?.id ?? v?.content?.id ?? v?.pk ?? v?.uuid ?? null;
+    if (typeof v === "object") return v?.id ?? v?.content?.id ?? v?.pk ?? v?.uuid ?? null;
     return null;
   }
-
   function collectAllContentIdsFromBook(book) {
     const out = [];
     const seen = new Set();
@@ -4224,41 +2022,33 @@ export default function BookDetailsPage() {
       const id = pickId(val);
       if (id && !seen.has(id)) { seen.add(id); out.push(id); }
     };
-
     if (!book) return out;
-
     push(book?.content);
     push(book?.content?.id);
     push(book?.content_id);
     push(book?.primary_content_id);
     if (Array.isArray(book?.contents)) book.contents.forEach(push);
     push(book?.syllabus?.content);
-
     if (Array.isArray(book?.syllabus?.units)) {
       for (const u of book.syllabus.units) {
         const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
         for (const l of lessons) {
           const c = l?.contents;
-          if (Array.isArray(c)) c.forEach(push);
-          else push(c);
+          if (Array.isArray(c)) c.forEach(push); else push(c);
         }
       }
     }
-
     if (Array.isArray(book?.units)) {
       for (const u of book.units) {
         const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
         for (const l of lessons) {
           const c = l?.contents;
-          if (Array.isArray(c)) c.forEach(push);
-          else push(c);
+          if (Array.isArray(c)) c.forEach(push); else push(c);
         }
       }
     }
-
     return out;
   }
-
   async function resolveAllContentIds({ bookId, book }) {
     if (book) return collectAllContentIdsFromBook(book);
     const r = await jfetch(`/api/books/${encodeURIComponent(bookId)}/`);
@@ -4266,78 +2056,7 @@ export default function BookDetailsPage() {
     return collectAllContentIdsFromBook(B);
   }
 
-  function normalizeText(s = "") {
-    return String(s || "")
-      .replace(/\r\n/g, "\n")
-      .replace(/\u00A0/g, " ")
-      .replace(/[ \t]+\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }
 
-  const RAW_API_BASE =
-    (typeof API_BASE !== "undefined" && API_BASE) ||
-    (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_BASE) ||
-    "";
-
-  function normalizeBase(base) {
-    let b = String(base || "").trim();
-    b = b.replace(/^https\/\//i, "https://").replace(/^http\/\//i, "http://");
-    if (!/^https?:\/\//i.test(b)) {
-      b = "https://" + b.replace(/^\/+/, "");
-    }
-    b = b.replace(/\/+$/, "");
-    return b;
-  }
-  const ABS_API_BASE = normalizeBase(RAW_API_BASE);
-
-  function isAbsoluteUrl(u = "") {
-    return /^https?:\/\//i.test(u);
-  }
-  function joinUrl(base, path) {
-    const b = String(base || "").replace(/\/+$/, "");
-    const p = String(path || "").trim();
-    if (!p) return b;
-    if (isAbsoluteUrl(p)) return p;
-    if (!p.startsWith("/")) return `${b}/${p}`;
-    return `${b}${p}`;
-  }
-
-  function extractBookContentTextMap(book) {
-    const map = {};
-    const push = (cid, obj) => {
-      const id = pickId(cid);
-      if (!id) return;
-      const text = obj?.text ?? obj?.content_text ?? obj?.body ?? obj?.markdown ?? "";
-      const lesson = obj?.lesson ?? obj?.lesson_id ?? obj?.lessonId;
-      if (map[id] == null) map[id] = { text: String(text || ""), lesson };
-    };
-
-    if (book?.content) push(book.content?.id ?? book.content, book.content);
-    if (Array.isArray(book?.contents)) {
-      for (const c of book.contents) push(c?.id ?? c, c);
-    }
-
-    const units = Array.isArray(book?.syllabus?.units) ? book.syllabus.units : [];
-    for (const u of units) {
-      const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
-      for (const l of lessons) {
-        const cs = Array.isArray(l?.contents) ? l.contents : (l?.contents ? [l.contents] : []);
-        for (const c of cs) push(c?.id ?? c, { ...c, lesson: l?.id ?? l?.lesson_id });
-      }
-    }
-
-    const legacyUnits = Array.isArray(book?.units) ? book.units : [];
-    for (const u of legacyUnits) {
-      const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
-      for (const l of lessons) {
-        const cs = Array.isArray(l?.contents) ? l.contents : (l?.contents ? [l?.contents] : []);
-        for (const c of cs) push(c?.id ?? c, { ...c, lesson: l?.id ?? l?.lesson_id });
-      }
-    }
-
-    return map;
-  }
 
   async function fetchExistingContentTextMap(ids = []) {
     const out = {};
@@ -4358,75 +2077,26 @@ export default function BookDetailsPage() {
         return out;
       }
     } catch (e) {
-      console.warn("[bulk fetchExisting] failed, will try sequential. Msg:", e?.message || e);
+      console.warn("[bulk fetchExisting] failed, will try sequential.", e?.message || e);
     }
 
     const BATCH = 10;
     for (let i = 0; i < ids.length; i += BATCH) {
       const slice = ids.slice(i, i + BATCH);
-      await Promise.all(slice.map(async (id) => {
-        try {
-          const r = await jfetch(`${API_BASE}/api/contents/${encodeURIComponent(String(id))}/`);
-          const c = r?.data ?? r ?? {};
-          const text = c?.text ?? c?.content_text ?? c?.body ?? c?.markdown ?? "";
-          const lesson = c?.lesson ?? c?.lesson_id ?? c?.lessonId;
-          out[String(id)] = { text: String(text || ""), lesson };
-        } catch (e) {
-          console.warn("[fetch content] id", id, "failed:", e?.message || e);
-        }
-      }));
+      await Promise.all(
+        slice.map(async (id) => {
+          try {
+            const r = await jfetch(`${API_BASE}/api/contents/${encodeURIComponent(String(id))}/`);
+            const c = r?.data ?? r ?? {};
+            const text = c?.text ?? c?.content_text ?? c?.body ?? c?.markdown ?? "";
+            const lesson = c?.lesson ?? c?.lesson_id ?? c?.lessonId;
+            out[String(id)] = { text: String(text || ""), lesson };
+          } catch (e) {
+            console.warn("[fetch content] id", id, "failed:", e?.message || e);
+          }
+        })
+      );
     }
-    return out;
-  }
-
-  function htmlToMarkdown(html = "") {
-    if (!html || typeof html !== "string") return "";
-
-    let s = html;
-
-    s = s.replace(/<br\s*\/?>/gi, "\n");
-    s = s.replace(/<\/p>\s*/gi, "\n\n").replace(/<p[^>]*>/gi, "");
-
-    s = s.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_, t) => `# ${t}\n\n`);
-    s = s.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, t) => `## ${t}\n\n`);
-    s = s.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, t) => `### ${t}\n\n`);
-    s = s.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, t) => `#### ${t}\n\n`);
-    s = s.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, (_, t) => `##### ${t}\n\n`);
-    s = s.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, (_, t) => `###### ${t}\n\n`);
-
-    s = s.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, "**$1**");
-    s = s.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, "**$1**");
-    s = s.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, "_$1_");
-    s = s.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, "_$1_");
-    s = s.replace(/<u[^>]*>([\s\S]*?)<\/u>/gi, "$1");
-
-    s = s.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (_, src) => `\n\n![](${src})\n\n`);
-
-    s = s.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href, text) => `[${text}](${href})`);
-
-    s = s.replace(/<\/li>\s*<\/ul>/gi, "</li>\n</ul>");
-    s = s.replace(/<ul[^>]*>\s*/gi, "\n");
-    s = s.replace(/<li[^>]*>\s*/gi, "- ");
-    s = s.replace(/<\/li>/gi, "\n");
-    s = s.replace(/<\/ul>/gi, "\n");
-
-    s = s.replace(/<\/?div[^>]*>/gi, "\n");
-    s = s.replace(/<\/?span[^>]*>/gi, "");
-    s = s.replace(/<\/?section[^>]*>/gi, "\n");
-
-    s = s.replace(/<\/?[^>]+>/g, "");
-
-    s = s.replace(/\n{3,}/g, "\n\n");
-
-    return s.trim();
-  }
-
-  /* ============
-    SAVE (PATCH)
-    ============ */
-  function headersToObject(h) {
-    const out = {};
-    try { for (const [k, v] of h.entries()) out[k] = v; } catch { }
     return out;
   }
 
@@ -4451,25 +2121,16 @@ export default function BookDetailsPage() {
     try { text = await resp.text(); } catch { }
 
     let json = null;
-    try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+    try { json = text ? JSON.parse(text) : null; } catch { }
 
-    const headObj = headersToObject(resp.headers);
+    const headObj = {};
+    try { for (const [k, v] of resp.headers.entries()) headObj[k] = v; } catch { }
 
     const logPayload = {
-      method,
-      url,
-      status: resp.status,
-      ok: resp.ok,
-      duration_ms: ms,
-      response_headers: headObj,
-      response_body: json ?? text,
+      method, url, status: resp.status, ok: resp.ok, duration_ms: ms, response_headers: headObj, response_body: json ?? text,
     };
-
-    if (resp.ok) {
-      console.log("[HTTP] ✅ response", logPayload);
-    } else {
-      console.warn("[HTTP] ⚠️ response (non-2xx)", logPayload);
-    }
+    if (resp.ok) console.log("[HTTP] ✅ response", logPayload);
+    else console.warn("[HTTP] ⚠️ response (non-2xx)", logPayload);
 
     return { ok: resp.ok, status: resp.status, headers: headObj, json, text, duration_ms: ms };
   }
@@ -4480,26 +2141,33 @@ export default function BookDetailsPage() {
     let ids = Array.isArray(contentIds) ? contentIds.slice() : [];
     if (!ids.length) ids = await resolveAllContentIds({ bookId, book });
     ids = Array.from(new Set(ids.filter(Boolean))).map(String);
-    if (!ids.length) {
-      alert("No content ids available to save.");
-      return;
-    }
+    if (!ids.length) { alert("No content ids available to save."); return; }
 
     const rawPages = typeof collectEditedHTMLRef?.current === "function"
       ? collectEditedHTMLRef.current()
       : (pages || []);
-    if (!Array.isArray(rawPages) || !rawPages.length) {
-      alert("No edited pages found.");
-      return;
-    }
+    if (!Array.isArray(rawPages) || !rawPages.length) { alert("No edited pages found."); return; }
 
     const editedHTML = Array.isArray(rawPages) ? rawPages : [];
     const baselineHTML =
       (collectEditedHTMLRef?.current && collectEditedHTMLRef.current.__initial) ||
       (pages || []);
 
-    const toNorm = (h) =>
-      normalizeText(WANT_MARKDOWN ? htmlToMarkdown(String(h || "")) : String(h || ""));
+    // ✅ Prefer TextFormat.htmlToMarkdown; fallback to legacy
+    const toMarkdown = (html) =>
+    (TextFormat && typeof TextFormat.htmlToMarkdown === "function"
+      ? TextFormat.htmlToMarkdown(html)
+      : legacyHtmlToMarkdown(html));
+
+    const normalizeText = (s = "") =>
+      String(s || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\u00A0/g, " ")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+    const toNorm = (h) => normalizeText(WANT_MARKDOWN ? toMarkdown(String(h || "")) : String(h || ""));
 
     let dirtyIdx = [];
     if (Array.isArray(editedHTML) && Array.isArray(baselineHTML) && baselineHTML.length) {
@@ -4511,11 +2179,7 @@ export default function BookDetailsPage() {
       dirtyIdx = editedHTML.map((_, i) => i).slice(0, ids.length);
     }
 
-    if (!dirtyIdx.length) {
-      console.info("[DIRTY] No real edits — abort.");
-      alert("Nothing changed — no updates needed.");
-      return;
-    }
+    if (!dirtyIdx.length) { alert("Nothing changed — no updates needed."); return; }
 
     let existingMap = extractBookContentTextMap(book);
     const missing = ids.filter((id) => existingMap[id] == null);
@@ -4529,51 +2193,24 @@ export default function BookDetailsPage() {
       const id = ids[i];
       const beforeApi = normalizeText(existingMap[id]?.text || "");
       const afterUser = toNorm(editedHTML[i]);
-      if (afterUser !== beforeApi) {
-        changes.push({ id, payload: { text: afterUser } });
-      }
+      if (afterUser !== beforeApi) changes.push({ id, payload: { text: afterUser } });
     }
 
-    if (!changes.length) {
-      console.info("[DIFF] Dirty vs baseline था, पर API text already match — nothing to send.");
-      alert("Nothing changed — already up to date.");
-      return;
-    }
-
-    console.log("[DIFF] Mismatched Content IDs:", changes.map(c => c.id));
+    if (!changes.length) { alert("Nothing changed — already up to date."); return; }
 
     const patchResults = [];
-
     const errors = [];
     for (const { id, payload } of changes) {
       const path = `/api/contents/${encodeURIComponent(String(id))}/`;
       const url = joinUrl(ABS_API_BASE, path);
-
-      console.groupCollapsed(`[PATCH] id=${id}`);
-      console.log("url:", url);
-      console.log("payload (sent):", payload);
-
       try {
-        const url = joinUrl(ABS_API_BASE, path);
         const resp = await requestWithLog(url, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           bodyObj: payload,
         });
-
         const server = (resp && (resp.json ?? resp.text)) ?? null;
-
-        console.log("[HTTP] meta:", {
-          status: resp.status, ok: resp.ok, ms: resp.duration_ms, url
-        });
-
-        console.log("[PATCH] payload (sent):", payload);
-        console.log("[PATCH] response (full):\n", JSON.stringify(server, null, 2));
-
-        if (!resp.ok) {
-          throw new Error(`[${resp.status}] ${JSON.stringify(server)}`);
-        }
-
+        if (!resp.ok) throw new Error(`[${resp.status}] ${JSON.stringify(server)}`);
         patchResults.push({
           id: server?.id ?? id,
           ok: resp.ok,
@@ -4585,80 +2222,87 @@ export default function BookDetailsPage() {
       } catch (e) {
         console.error(`[PATCH] id=${id} failed:`, e?.message || e);
         errors.push({ id, error: e?.message || String(e) });
-      } finally {
-        console.groupEnd();
       }
-
     }
-
-    if (patchResults.length) {
-      console.groupCollapsed("[PATCH] summary table");
-      console.table(
-        patchResults.map(r => ({
-          id: r.id,
-          status: r.status,
-          ok: r.ok,
-          ms: r.ms,
-          text_len: (r.server?.text || "").length,
-          updated_at: r.server?.updated_at,
-          lesson: r.server?.lesson,
-        }))
-      );
-      console.groupEnd();
-    }
-
-
 
     if (errors.length) {
       alert(`Saved with some errors ❗\n` + errors.map(e => `id=${e.id}: ${e.error}`).join("\n"));
     } else {
       if (collectEditedHTMLRef?.current) {
-        try {
-          collectEditedHTMLRef.current.__initial = editedHTML.slice();
-        } catch { }
+        try { collectEditedHTMLRef.current.__initial = editedHTML.slice(); } catch { }
       }
       alert(`Saved successfully ✅ (${changes.length} item${changes.length > 1 ? "s" : ""} updated)`);
     }
   }
 
+  function extractBookContentTextMap(book) {
+    const map = {};
+    const push = (cid, obj) => {
+      const id = pickId(cid);
+      if (!id) return;
+      const text = obj?.text ?? obj?.content_text ?? obj?.body ?? obj?.markdown ?? "";
+      const lesson = obj?.lesson ?? obj?.lesson_id ?? obj?.lessonId;
+      if (map[id] == null) map[id] = { text: String(text || ""), lesson };
+    };
 
+    if (book?.content) push(book.content?.id ?? book.content, book.content);
+    if (Array.isArray(book?.contents)) for (const c of book.contents) push(c?.id ?? c, c);
+
+    const units = Array.isArray(book?.syllabus?.units) ? book.syllabus.units : [];
+    for (const u of units) {
+      const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
+      for (const l of lessons) {
+        const cs = Array.isArray(l?.contents) ? l.contents : (l?.contents ? [l?.contents] : []);
+        for (const c of cs) push(c?.id ?? c, { ...c, lesson: l?.id ?? l?.lesson_id });
+      }
+    }
+
+    const legacyUnits = Array.isArray(book?.units) ? book.units : [];
+    for (const u of legacyUnits) {
+      const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
+      for (const l of lessons) {
+        const cs = Array.isArray(l?.contents) ? l.contents : (l?.contents ? [l?.contents] : []);
+        for (const c of cs) push(c?.id ?? c, { ...c, lesson: l?.id ?? l?.lesson_id });
+      }
+    }
+
+    return map;
+  }
+
+  function isAbsoluteUrl(u = "") { return /^https?:\/\//i.test(u); }
+  function normalizeBase(base) {
+    let b = String(base || "").trim();
+    b = b.replace(/^https\/\//i, "https://").replace(/^http\/\//i, "http://");
+    if (!/^https?:\/\//i.test(b)) b = "https://" + b.replace(/^\/+/, "");
+    b = b.replace(/\/+$/, "");
+    return b;
+  }
+  const RAW_API_BASE =
+    (typeof API_BASE !== "undefined" && API_BASE) ||
+    (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_BASE) ||
+    "";
+  const ABS_API_BASE = normalizeBase(RAW_API_BASE);
+  function joinUrl(base, path) {
+    const b = String(base || "").replace(/\/+$/, "");
+    const p = String(path || "").trim();
+    if (!p) return b;
+    if (isAbsoluteUrl(p)) return p;
+    if (!p.startsWith("/")) return `${b}/${p}`;
+    return `${b}${p}`;
+  }
 
   async function handleSaveCover() {
     if (!coverFile) { alert("Please choose a cover image first."); return; }
-
     const endpoint = joinUrl(ABS_API_BASE, `/api/books/${encodeURIComponent(bookId)}/`);
     const fd = new FormData();
     fd.append("cover_page", coverFile);
-
     setSavingCover(true);
     try {
-      console.groupCollapsed("[COVER] ▶️ Upload start");
-      console.log("URL:", endpoint);
-      console.log("File:", coverFile?.name, coverFile?.type, coverFile?.size);
-      console.groupEnd();
-
-      const resp = await fetch(endpoint, {
-        method: "PATCH",
-        body: fd,
-        credentials: "include",
-      });
-
+      const resp = await fetch(endpoint, { method: "PATCH", body: fd, credentials: "include" });
       const text = await resp.text();
-      let json = null;
-      try { json = text ? JSON.parse(text) : null; } catch { }
-
-      console.groupCollapsed("[COVER] ◀️ Upload response");
-      console.log("status:", resp.status, "ok:", resp.ok);
-      console.log("raw body:", text);
-      console.log("json:", json);
-      console.groupEnd();
-
+      let json = null; try { json = text ? JSON.parse(text) : null; } catch { }
       if (!resp.ok) throw new Error(`[${resp.status}] ${text || "Upload failed"}`);
-
-      if (json && typeof json === "object") {
-        setBook((prev) => ({ ...(prev || {}), ...json }));
-      }
-
+      if (json && typeof json === "object") setBook((prev) => ({ ...(prev || {}), ...json }));
       alert("Cover saved ✅");
     } catch (e) {
       console.error("[COVER] ❌ Upload failed:", e?.message || e);
@@ -4710,9 +2354,6 @@ export default function BookDetailsPage() {
               <span>{exporting ? (exportNote || "Exporting…") : "Download PDF"}</span>
             </button>
 
-
-
-
             <button
               onClick={() => {
                 setShowThemePanel((s) => !s);
@@ -4721,25 +2362,14 @@ export default function BookDetailsPage() {
               }}
               title="Theme"
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                height: 36,
-                borderRadius: 8,
-                border: "1px solid #e2e8f0",
-                padding: "0 12px",
-                background: "#fff",
-                color: "#0f172a",
-                cursor: "pointer",
-                fontWeight: 600,
+                display: "inline-flex", alignItems: "center", gap: 8, height: 36,
+                borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 12px",
+                background: "#fff", color: "#0f172a", cursor: "pointer", fontWeight: 600,
               }}
             >
               <span role="img" aria-label="palette">🎨</span>
-              <span>
-                {selectedThemeKey} — {effectiveTheme?.id || "theme"}
-              </span>
+              <span>{selectedThemeKey} — {effectiveTheme?.id || "theme"}</span>
             </button>
-
 
             <button
               onClick={() => {
@@ -4749,17 +2379,9 @@ export default function BookDetailsPage() {
               }}
               title="Edit"
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                height: 36,
-                borderRadius: 8,
-                border: "1px solid #e2e8f0",
-                padding: "0 12px",
-                background: "#fff",
-                color: "#0f172a",
-                cursor: "pointer",
-                fontWeight: 600,
+                display: "inline-flex", alignItems: "center", gap: 8, height: 36,
+                borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 12px",
+                background: "#fff", color: "#0f172a", cursor: "pointer", fontWeight: 600,
               }}
             >
               <span role="img" aria-label="edit">✏️</span>
@@ -4772,36 +2394,24 @@ export default function BookDetailsPage() {
                   onClick={() => {
                     if (selectedPage == null) return;
                     setBgDisabledPages((prev) => {
-                      const s = new Set(prev);
-                      s.add(selectedPage - 1);
-                      return s;
+                      const s = new Set(prev); s.add(selectedPage - 1); return s;
                     });
                   }}
                   disabled={selectedPage == null}
                   style={{
-                    height: 32,
-                    padding: "0 12px",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    background: "#fff",
-                    fontWeight: 600,
-                    cursor: selectedPage != null ? "pointer" : "not-allowed",
+                    height: 32, padding: "0 12px", border: "1px solid #e5e7eb", borderRadius: 8,
+                    background: "#fff", fontWeight: 600, cursor: selectedPage != null ? "pointer" : "not-allowed",
                   }}
                   title="Remove background image on this page only"
                 >
                   Remove BG (this page)
                 </button>
+
                 <button
                   onClick={handleSaveEditedPages}
                   style={{
-                    height: 32,
-                    padding: "0 12px",
-                    border: "1px solid #10b981",
-                    borderRadius: 8,
-                    background: "#10b981",
-                    color: "#fff",
-                    fontWeight: 700,
-                    cursor: "pointer",
+                    height: 32, padding: "0 12px", border: "1px solid #10b981", borderRadius: 8,
+                    background: "#10b981", color: "#fff", fontWeight: 700, cursor: "pointer",
                   }}
                   title="Save edited pages"
                 >
@@ -4812,20 +2422,13 @@ export default function BookDetailsPage() {
                   onClick={() => {
                     if (selectedPage == null) return;
                     setBgDisabledPages((prev) => {
-                      const s = new Set(prev);
-                      s.delete(selectedPage - 1);
-                      return s;
+                      const s = new Set(prev); s.delete(selectedPage - 1); return s;
                     });
                   }}
                   disabled={selectedPage == null}
                   style={{
-                    height: 32,
-                    padding: "0 12px",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    background: "#fff",
-                    fontWeight: 600,
-                    cursor: selectedPage != null ? "pointer" : "not-allowed",
+                    height: 32, padding: "0 12px", border: "1px solid #e5e7eb", borderRadius: 8,
+                    background: "#fff", fontWeight: 600, cursor: selectedPage != null ? "pointer" : "not-allowed",
                   }}
                   title="Restore background image on this page"
                 >
@@ -4833,21 +2436,10 @@ export default function BookDetailsPage() {
                 </button>
               </>
             ) : null}
-
           </div>
         </div>
 
-
-
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "360px 1fr",
-            gap: 16,
-            alignItems: "start",
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 16, alignItems: "start" }}>
           {showEditorPanel ? (
             <EditorPanel onClose={() => setShowEditorPanel(false)} />
           ) : showThemePanel ? (
@@ -4858,7 +2450,6 @@ export default function BookDetailsPage() {
               pageThemes={pageThemes}
               effectiveTheme={effectiveTheme}
               currentThemeId={book?.theme_json?.id}
-
               onApplyBackgroundUrl={handleApplyBgUrl}
               apply={apply}
               setApply={setApply}
@@ -4970,11 +2561,7 @@ export default function BookDetailsPage() {
                                   const doScroll = () => {
                                     const el = document.getElementById(targetId);
                                     if (el) {
-                                      el.scrollIntoView({
-                                        behavior: "smooth",
-                                        block: "start",
-                                        inline: "nearest",
-                                      });
+                                      el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
                                     }
                                   };
                                   requestAnimationFrame(doScroll);
@@ -4992,10 +2579,8 @@ export default function BookDetailsPage() {
                                       textAlign: "left",
                                       cursor: "pointer",
                                       fontSize: 12,
-                                      border: `1px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#e5e7eb"
-                                        }`,
-                                      borderLeft: `6px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#3333ff"
-                                        }`,
+                                      border: `1px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#e5e7eb"}`,
+                                      borderLeft: `6px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#3333ff"}`,
                                       borderRadius: 10,
                                       padding: "10px 12px",
                                       background: isActive ? "rgba(37,99,235,0.07)" : "#fff",
@@ -5022,15 +2607,10 @@ export default function BookDetailsPage() {
                       });
                   })()}
                 </div>
-
               </aside>
 
               {zoomSrc ? (
-                <ImageMagnifierOverlay
-                  src={zoomSrc}
-                  onClose={() => setZoomSrc("")}
-                  initialScale={1}
-                />
+                <ImageMagnifierOverlay src={zoomSrc} onClose={() => setZoomSrc("")} initialScale={1} />
               ) : null}
             </>
           )}
@@ -5046,8 +2626,8 @@ export default function BookDetailsPage() {
           >
             <DocView
               pages={pages}
-              fontSize={DOC_FONT}
-              deviceDimensions={{ width: 720, height: 520 }}
+              fontSize={12}
+              deviceDimensions={{ width: 794 }}
               theme={effectiveTheme}
               onPageInView={setCurrentPage}
               editable={showEditorPanel}
@@ -5058,33 +2638,11 @@ export default function BookDetailsPage() {
               onSelectPage={setSelectedPage}
               bgDisabledPages={bgDisabledPages}
               collectEditedHTMLRef={collectEditedHTMLRef}
+
             />
           </div>
         </div>
       </div>
-      <style jsx global>{`
-    /* A4 @ ~96dpi = 794 x 1123px */
-    .tbm-exporting .doc-sheet {
-      width: 794px !important;
-    }
-    .tbm-exporting .tbm-page,
-    .tbm-exporting .tbm-body {
-      width: 100% !important;
-      min-height: 100% !important;
-    }
-
-    /* Already suggested hardening for speed */
-    @keyframes tbmSpin { to { transform: rotate(360deg); } }
-    .tbm-exporting *, .tbm-printing *{
-      animation:none!important; transition:none!important;
-      box-shadow:none!important; filter:none!important; text-shadow:none!important; backdrop-filter:none!important;
-    }
-    .tbm-exporting aside{ display:none!important; } /* hide sidebar in export */
-    .tbm-exporting .doc-sheet,
-    .tbm-exporting .tbm-page,
-    .tbm-exporting .tbm-body{ background-image:none!important; }
-  `}</style>
-
     </div>
   );
 }
@@ -5092,37 +2650,145 @@ export default function BookDetailsPage() {
 
 
 
-function createWatermarkedBackgroundSVG({
-  imageUrl,
-  text = "TBM+",
-  opacity = 0.12,
-  gap = 220,
-  size = 56,
-  angle = -30,
-  fontFamily = "Inter,system-ui,Arial",
-}) {
-  const W = 2480, H = 3508;
 
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <defs>
-   <g transform="translate(${W / 2}, ${H / 2}) rotate(${angle})">
-   <text
-     x="0" y="0"
-     text-anchor="middle" dominant-baseline="middle"
-     font-family="${fontFamily}" font-size="${size * 6}"
-     fill="#000" opacity="${opacity}" font-weight="700">
-     ${escapeXml(text)}
-   </text>
- </g>
-    <clipPath id="full"><rect x="0" y="0" width="${W}" height="${H}"/></clipPath>
-  </defs>
 
-  <!-- Base uploaded image -->
-  <image href="${imageUrl}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" clip-path="url(#full)"/>
-  <!-- Watermark layer (diagonal, repeated) -->
-</svg>`.trim();
 
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
 
+
+
+// async function handleExportPDFDirect() {
+//   if (exporting) return;
+//   const root = document.querySelector('[data-docview]');
+//   if (!root) { alert("Document not found"); return; }
+
+//   setExporting(true);
+//   setExportNote("Loading export libraries…");
+//   await ensureCanvasAndPdfLibs();
+
+//   const html2canvas = window.html2canvas;
+//   const jsPDF = window.jspdf.jsPDF;
+
+//   // 1) Prefetch all external assets to blobs *before* rendering
+//   setExportNote("Prefetching images…");
+//   const urls = collectAssetUrls(root);
+//   const { urlMap, revokeAll } = await prefetchAssetsToBlob(urls);
+
+//   const jpegQuality = fastMode ? 0.82 : 0.92;
+
+//   // Helper: decide orientation from canvas size
+//   const getOrientation = (w, h) => (w >= h ? "landscape" : "portrait");
+
+//   // NOTE: We will initialize jsPDF after rendering the first page,
+//   // using THAT page's pixel dimensions. Unit = 'px' keeps sizes 1:1 with canvas.
+//   let pdf = null;
+
+//   try {
+//     setExportNote("Preparing pages…");
+//     freezeForExport();
+
+//     const pagesEls = Array.from(root.querySelectorAll(".doc-sheet"));
+//     if (!pagesEls.length) throw new Error("No pages found");
+
+//     if (!fastMode) await waitForFonts();
+
+//     // Scale only for render quality, not to fit A4
+//     const baseScale =
+//       pagesEls.length > 150 ? 0.9 :
+//       pagesEls.length > 120 ? 1.0 :
+//       pagesEls.length >  80 ? 1.2 :
+//       pagesEls.length >  40 ? 1.4 : 1.8;
+
+//     const isHeavy = (el) => {
+//       const textLen = (el.innerText || "").length;
+//       const media = el.querySelectorAll("img,svg,canvas,video").length;
+//       return textLen > 2500 || media > 6;
+//     };
+
+//     for (let i = 0; i < pagesEls.length; i++) {
+//       setExportNote(`Rendering page ${i + 1} / ${pagesEls.length}…`);
+//       await new Promise((r) => setTimeout(r, 0));
+
+//       const el = pagesEls[i];
+//       const scale = (fastMode && isHeavy(el)) ? Math.max(0.8, Math.min(baseScale, 1.1)) : baseScale;
+
+//       const canvas = await html2canvas(el, {
+//         scale,
+//         useCORS: true,
+//         allowTaint: false,
+//         backgroundColor: null,
+//         letterRendering: false,
+//         scrollX: 0,
+//         scrollY: 0,
+//         onclone: (doc) => {
+//           doc.body.classList.add("tbm-printing", "tbm-exporting");
+
+//           // imgs
+//           doc.querySelectorAll("img[src]").forEach((img) => {
+//             const raw = (img.getAttribute("src") || "").trim();
+//             if (urlMap.has(raw)) {
+//               img.crossOrigin = "anonymous";
+//               img.setAttribute("crossorigin", "anonymous");
+//               img.setAttribute("data-old-src", raw);
+//               img.src = urlMap.get(raw);
+//               img.decoding = "sync";
+//               img.loading = "eager";
+//             } else {
+//               img.crossOrigin = "anonymous";
+//               img.setAttribute("crossorigin", "anonymous");
+//               img.decoding = "sync";
+//               img.loading = "eager";
+//             }
+//           });
+
+//           // background-image
+//           const all = Array.from(doc.querySelectorAll("*"));
+//           all.forEach((node) => {
+//             const cs = doc.defaultView.getComputedStyle(node);
+//             const bg = cs.backgroundImage || "";
+//             const m = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/i.exec(bg);
+//             if (m && urlMap.has(m[2])) {
+//               node.setAttribute("data-old-bg", node.style.backgroundImage || "");
+//               node.style.backgroundImage = `url("${urlMap.get(m[2])}")`;
+//             }
+//           });
+//         },
+//       });
+
+//       const cW = canvas.width;   // pixel width of rendered page
+//       const cH = canvas.height;  // pixel height of rendered page
+//       const orientation = getOrientation(cW, cH);
+
+//       // Initialize PDF with the FIRST page's exact pixel size (NOT A4)
+//       if (!pdf) {
+//         pdf = new jsPDF({
+//           unit: "px",
+//           format: [cW, cH],
+//           orientation,
+//         });
+//       } else {
+//         // For subsequent pages, add a page with that page's exact size
+//         pdf.addPage([cW, cH], orientation);
+//       }
+
+//       const imgData = canvas.toDataURL("image/jpeg", jpegQuality);
+//       // Place image at 0,0 with SAME pixel dims as canvas, so no resizing
+//       pdf.addImage(imgData, "JPEG", 0, 0, cW, cH);
+
+//       if (pagesEls.length > 60) {
+//         try { canvas.width = canvas.height = 0; } catch {}
+//       }
+//     }
+
+//     const filename = `${(book?.title || "book").replace(/[^\w\d\-]+/g, "_")}.pdf`;
+//     setExportNote("Finalizing…");
+//     pdf.save(filename);
+//   } catch (e) {
+//     console.error("PDF export failed:", e);
+//     alert("PDF export failed: " + (e?.message || "Unknown error"));
+//   } finally {
+//     try { revokeAll(); } catch {}
+//     unfreezeAfterExport();
+//     setExportNote("");
+//     setExporting(false);
+//   }
+// }
