@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import GeneratedPayloadModal from '@/components/GeneratedPayloadModal';
 import SuccessRow from "@/components/SuccessRow";
+import FailedRow from "@/components/FailedRow";
 
 function TypingDots() {
   return (
@@ -15,7 +16,7 @@ function TypingDots() {
   );
 }
 
-export function Step5Content({ isStreaming, processingStep, contentPhase, lessonProgress, contentJson }) {
+export function Step5Content({ isStreaming, processingStep, contentPhase = {}, lessonProgress, contentJson }) {
   const [openPayload, setOpenPayload] = useState(null);
 
   const norm = (s) => String(s || '').toLowerCase().trim().replace(/\s+/g, '_');
@@ -41,15 +42,17 @@ export function Step5Content({ isStreaming, processingStep, contentPhase, lesson
     return { total: t, done: d, failed: f, started: s, active: a };
   }, [lessonsArr]);
 
+  // 👇 Moved here: total/failed now exist
+  const showFailed = total === 1 && failed === 1;
+
   const pillClass =
-    contentPhase.status === 'completed'
+    contentPhase?.status === 'completed'
       ? 'bg-emerald-100 text-emerald-700'
-      : contentPhase.status === 'failed'
+      : contentPhase?.status === 'failed'
         ? 'bg-red-100 text-red-700'
-        : contentPhase.status === 'started'
+        : contentPhase?.status === 'started'
           ? 'bg-blue-100 text-blue-700'
           : 'bg-gray-100 text-gray-700';
-
 
   const showSuccess =
     contentPhase?.status === 'completed' &&
@@ -76,10 +79,15 @@ export function Step5Content({ isStreaming, processingStep, contentPhase, lesson
         <p className="text-gray-600">Live updates via content websocket</p>
       </div>
 
-      {showSuccess ? (
+      {showFailed ? (
+        <FailedRow
+          title="Generation failed"
+          subtitle={contentPhase?.message || "Something went wrong. Please try again."}
+        />
+      ) : showSuccess ? (
         <SuccessRow
           title="Dynamic Prompt ready!"
-          subtitle={contentPhase.message || "Dynamic Prompt generation completed."}
+          subtitle={contentPhase?.message || "Dynamic Prompt generation completed."}
           confetti
         />
       ) : (
@@ -103,12 +111,12 @@ export function Step5Content({ isStreaming, processingStep, contentPhase, lesson
                   )}
                 </div>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${pillClass}`}>
-                  {contentPhase.status || 'IDLE'}
+                  {contentPhase?.status || 'IDLE'}
                 </span>
               </div>
 
               <div className="text-gray-900 font-medium truncate">
-                {contentPhase.message || processingStep || (isStreaming ? 'Preparing…' : 'Ready')}
+                {contentPhase?.message || processingStep || (isStreaming ? 'Preparing…' : 'Ready')}
               </div>
 
               {isStreaming && (

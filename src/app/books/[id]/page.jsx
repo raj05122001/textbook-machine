@@ -157,7 +157,6 @@ function replaceHexColors(html, colorMap) {
   return out;
 }
 
-// Paragraph-based pagination (kept as in your version)
 function splitHtmlByParagraphs(html = "", maxCharsPerPage = 1800) {
   const P = String(html || "")
     .replace(/\r\n/g, "\n")
@@ -193,8 +192,7 @@ function splitHtmlByParagraphs(html = "", maxCharsPerPage = 1800) {
   return pages;
 }
 
-/*  ✅ Fallback converter (your original htmlToMarkdown) —
-    used ONLY if TextFormat.htmlToMarkdown is not available. */
+
 function legacyHtmlToMarkdown(html = "") {
   if (!html || typeof html !== "string") return "";
   let s = html;
@@ -235,11 +233,7 @@ function bookToPagesWithTheme(book, theme) {
   const hasBgImg = !!theme?.page_bg_image;
   const blockBg = hasBgImg ? "transparent" : page_bg;
   const tableBd = hasBgImg ? "rgba(255,255,255,.25)" : "#e5e7eb";
-  const chipBg = hasBgImg ? "transparent" : "#fff";
-  const chipBd = tableBd;
-  const chipShadow = hasBgImg ? "none" : "0 2px 8px rgba(0,0,0,.03)";
-  const badgeBg = hasBgImg ? "transparent" : (accent || text);
-  const badgeTxt = hasBgImg ? text : "#fff";
+
 
   const sj = book?.syllabus;
   const units =
@@ -261,23 +255,47 @@ function bookToPagesWithTheme(book, theme) {
 
   const className = pickFirst(book, ["class_name", "class", "grade", "standard"]) || "";
 
+
   function wrap(bodyHtml, ctx = {}) {
-    const PAGE_SIDE_PAD = 28; // px: yahin se global LR padding control karo
+    const PAGE_SIDE_PAD = 28;
     const metaProbe = `
       <span style="display:none"
         data-unit="${_escapeHtml(ctx.unit || "")}"
        data-class="${_escapeHtml(className)}"
         data-title="${_escapeHtml(ctx.title || "")}">
       </span>`;
-    // sabhi pages ke content ko ek padded wrapper me daalo
     tempPages.push(
       `${metaProbe}<div style="padding: 0 ${PAGE_SIDE_PAD}px">${bodyHtml}</div>`
     );
   }
+
+
+  function estimateLessonPages(lesson) {
+    const blocks = blocksFromLesson(lesson);
+    if (!blocks || !blocks.length) return 1;
+    let pages = 0;
+    for (const b of blocks) {
+      const parts = splitHtmlByParagraphs(b, 1800);
+      pages += Math.max(1, (parts?.length ?? 1));
+    }
+    return Math.max(1, pages);
+  }
+
+  function estimateUnitPages(unit) {
+    const lessons = Array.isArray(unit?.lessons) ? unit.lessons : [];
+    if (!lessons.length) return 1;
+    let total = 0;
+    for (const l of lessons) total += estimateLessonPages(l);
+    return Math.max(1, total + 1);
+  }
+
   const tocRows = (units || [])
     .map((u, ui) => {
       const uTitle = u.title || `Unit ${ui + 1}`;
-      const uPages = u.number_of_pages ?? "—";
+      const uPages = Number.isFinite(u?.number_of_pages)
+        ? u.number_of_pages
+        : estimateUnitPages(u);
+
       const chipBase = `
   display:inline-flex;align-items:center;gap:6px;
   padding:6px 10px;margin:6px 8px 0 0;
@@ -470,7 +488,6 @@ function bookToPagesWithTheme(book, theme) {
   const total = tempPages.length;
   return tempPages.map((html) => html.replace(/\{\{\s*total\s*\}\}/g, String(total)));
 }
-// Make sure every <img> inside a node is fully loaded before html2canvas
 async function ensureImagesLoaded(rootEl) {
   const imgs = Array.from(rootEl.querySelectorAll('img[src]'));
   await Promise.all(
@@ -1532,11 +1549,9 @@ export default function BookDetailsPage() {
     })();
     return _libOnce;
   }
-  // --- Helpers: collect & prefetch external assets, and swap them in the clone ---
   function collectAssetUrls(rootNode) {
     const urls = new Set();
 
-    // <img src=...>
     rootNode.querySelectorAll("img[src]").forEach(img => {
       const src = (img.getAttribute("src") || "").trim();
       if (src && /^https?:\/\//i.test(src) && !src.startsWith("data:") && !src.startsWith("blob:")) {
@@ -1544,7 +1559,6 @@ export default function BookDetailsPage() {
       }
     });
 
-    // CSS background-image: url(...)
     const all = Array.from(rootNode.querySelectorAll("*"));
     all.forEach(node => {
       const bg = getComputedStyle(node).backgroundImage || "";
@@ -1571,12 +1585,11 @@ export default function BookDetailsPage() {
   }, []);
 
   async function prefetchAssetsToBlob(urls) {
-    const map = new Map(); // originalURL => blobURL
+    const map = new Map();
     const revokers = [];
 
     await Promise.all(urls.map(async (u) => {
       try {
-        // key trick: omit credentials so S3 can reply with CORS for anon GET
         const r = await fetch(u + (u.includes("?") ? "&" : "?") + "_cachebust=" + Date.now(), {
           mode: "cors",
           credentials: "omit",
@@ -1589,7 +1602,6 @@ export default function BookDetailsPage() {
         map.set(u, objUrl);
         revokers.push(() => { try { URL.revokeObjectURL(objUrl); } catch { } });
       } catch (e) {
-        // leave it unmapped; html2canvas may still fetch via CORS if bucket allows it
         console.warn("[prefetch] failed", u, e?.message || e);
       }
     }));
@@ -1626,6 +1638,8 @@ export default function BookDetailsPage() {
 
   async function handleExportPDFDirect() {
     if (exporting) return;
+    const useFast = false;
+    setFastMode(useFast);
     const root = document.querySelector('[data-docview]');
     if (!root) { alert("Document not found"); return; }
 
@@ -1654,9 +1668,7 @@ export default function BookDetailsPage() {
       const pagesEls = Array.from(root.querySelectorAll(".doc-sheet"));
       if (!pagesEls.length) throw new Error("No pages found");
 
-      if (!fastMode) await waitForFonts();
-
-      // Scale only for render quality, not to fit A4
+      if (!useFast) await waitForFonts()
       const baseScale =
         pagesEls.length > 150 ? 0.9 :
           pagesEls.length > 120 ? 1.0 :
@@ -1669,13 +1681,13 @@ export default function BookDetailsPage() {
         return textLen > 2500 || media > 6;
       };
 
-      let firstPageSize = null; // {w,h,orientation}
+      let firstPageSize = null;
       for (let i = 0; i < pagesEls.length; i++) {
         setExportNote(`Rendering page ${i + 1} / ${pagesEls.length}…`);
         await new Promise((r) => setTimeout(r, 0));
 
         const el = pagesEls[i];
-        const scale = (fastMode && isHeavy(el)) ? Math.max(0.8, Math.min(baseScale, 1.1)) : baseScale;
+        const scale = (useFast && isHeavy(el)) ? Math.max(0.8, Math.min(baseScale, 1.1)) : baseScale;
 
         const canvas = await html2canvas(el, {
           scale,
@@ -1688,13 +1700,11 @@ export default function BookDetailsPage() {
           imageTimeout: 0,
           removeContainer: true,
           onclone: (doc) => {
-            // keep your existing onclone, and add:
-            // force white background for any transparent page
+
             doc.documentElement.style.background = '#ffffff';
             doc.body.style.background = '#ffffff';
             doc.body.style.overflow = 'hidden';
 
-            // ensure images load eagerly in the clone
             doc.querySelectorAll('img[src]').forEach((img) => {
               const raw = (img.getAttribute('src') || '').trim();
               img.loading = 'eager';
@@ -1702,14 +1712,12 @@ export default function BookDetailsPage() {
               img.crossOrigin = 'anonymous';
               img.setAttribute('crossorigin', 'anonymous');
 
-              // if we prefetched a blob for this URL, swap it
               if (urlMap.has(raw)) {
                 img.setAttribute('data-old-src', raw);
                 img.src = urlMap.get(raw);
               }
             });
 
-            // background-image URL swaps (keep your existing code)
             const all = Array.from(doc.querySelectorAll('*'));
             all.forEach((node) => {
               const cs = doc.defaultView.getComputedStyle(node);
@@ -1724,11 +1732,10 @@ export default function BookDetailsPage() {
         });
 
 
-        const cW = canvas.width;   // pixel width of rendered page
-        const cH = canvas.height;  // pixel height of rendered page
+        const cW = canvas.width;
+        const cH = canvas.height;
         const orientation = getOrientation(cW, cH);
         if (!firstPageSize) firstPageSize = { w: cW, h: cH, orientation };
-        // Initialize PDF with the FIRST page's exact pixel size (NOT A4)
         if (!pdf) {
           pdf = new jsPDF({
             unit: "px",
@@ -1736,12 +1743,10 @@ export default function BookDetailsPage() {
             orientation,
           });
         } else {
-          // For subsequent pages, add a page with that page's exact size
           pdf.addPage([cW, cH], orientation);
         }
 
         const imgData = canvas.toDataURL("image/jpeg", jpegQuality);
-        // Place image at 0,0 with SAME pixel dims as canvas, so no resizing
         pdf.addImage(imgData, "JPEG", 0, 0, cW, cH);
 
         if (pagesEls.length > 60) {
@@ -1752,7 +1757,6 @@ export default function BookDetailsPage() {
       if (finalCoverSrc && firstPageSize) {
         setExportNote("Adding cover…");
         const { w: cW, h: cH, orientation } = firstPageSize;
-        // load image to dataURL (covers blob:, data:, http(s))
         const imgEl = await new Promise((resolve, reject) => {
           const img = new Image();
           try { img.crossOrigin = "anonymous"; } catch { }
@@ -1760,18 +1764,17 @@ export default function BookDetailsPage() {
           img.onerror = () => reject(new Error("Cover image load failed"));
           img.src = finalCoverSrc;
         });
-        // draw it to an offscreen canvas sized exactly like the pages
         const can = document.createElement("canvas");
         can.width = cW;
         can.height = cH;
         const ctx = can.getContext("2d");
-        // contain-fit with letterbox
+
         const scale = Math.min(cW / imgEl.width, cH / imgEl.height);
         const w = Math.round(imgEl.width * scale);
         const h = Math.round(imgEl.height * scale);
         const x = Math.round((cW - w) / 2);
         const y = Math.round((cH - h) / 2);
-        ctx.fillStyle = "#ffffff"; // white background for safety
+        ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, cW, cH);
         ctx.drawImage(imgEl, x, y, w, h);
         const coverData = can.toDataURL("image/jpeg", jpegQuality);
@@ -1780,10 +1783,9 @@ export default function BookDetailsPage() {
         const last = pdf.getNumberOfPages();
         pdf.setPage(last);
         pdf.addImage(coverData, "JPEG", 0, 0, cW, cH);
-        // move it to the beginning
         if (typeof pdf.movePage === "function") {
           pdf.movePage(last, 1);
-          pdf.setPage(pdf.getNumberOfPages()); // reset to last so subsequent ops stay safe
+          pdf.setPage(pdf.getNumberOfPages());
         }
       }
 
@@ -1803,7 +1805,6 @@ export default function BookDetailsPage() {
 
 
 
-  // theme apply state for ThemePanel
   const [apply, setApply] = React.useState({ page_bg: true, text: true, accent: true, accent2: true });
   const [custom, setCustom] = React.useState({ page_bg: "", text: "", accent: "", accent2: "" });
   const [svgColorMap, setSvgColorMap] = React.useState({});
@@ -1883,7 +1884,6 @@ export default function BookDetailsPage() {
 
   const pages = React.useMemo(() => bookToPagesWithTheme(book, effectiveTheme), [book, effectiveTheme]);
 
-  // load book
   React.useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -1954,6 +1954,18 @@ export default function BookDetailsPage() {
   const pageIndex = React.useMemo(() => {
     return (pages || []).map((p, i) => ({ page: i + 1, ...readMeta(p) }));
   }, [pages]);
+  function estimateUnitPages(u) {
+    let count = 0;
+    const lessons = Array.isArray(u?.lessons) ? u.lessons : [];
+    for (const l of lessons) {
+      const blocks = blocksFromLesson(l);              // you already have this
+      for (const b of blocks) {
+        const parts = splitHtmlByParagraphs(b, 1800);  // same limit you use later
+        count += Math.max(1, parts.length);
+      }
+    }
+    return count || "—";
+  }
 
   const groupedTOC = React.useMemo(() => {
     const map = new Map();
@@ -2439,7 +2451,13 @@ export default function BookDetailsPage() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 16, alignItems: "start" }}>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "360px 1fr",
+          gap: 16,
+          alignItems: "stretch",            // 👈 row ko full height tak khinch do
+          minHeight: "calc(100vh - 140px)", // 👈 header ki height ke hisaab se adjust (120/130 bhi kar sakte ho)
+        }}>
           {showEditorPanel ? (
             <EditorPanel onClose={() => setShowEditorPanel(false)} />
           ) : showThemePanel ? (
@@ -2474,10 +2492,13 @@ export default function BookDetailsPage() {
                 ref={tocRef}
                 style={{
                   position: "sticky",
-                  top: 16,
-                  alignSelf: "start",
-                  height: "calc(100vh - 32px)",
-                  overflow: "auto",
+                  top: 16,                         
+                  alignSelf: "stretch",
+
+                  maxHeight: "calc(100vh - 140px)",
+                  overflowY: "auto",         
+                  overflowX: "hidden",
+
                   border: "1px solid #e2e8f0",
                   borderRadius: 12,
                   background: "#fff",

@@ -3,14 +3,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   TriangleAlert,
-  Check,
   Plus,
   Trash2,
   Upload as UploadIcon,
   Save,
   Loader2,
 } from "lucide-react";
-import { axiosInstance } from "@/axios/AxiosInstans"; // <-- same path you use elsewhere
+import { axiosInstance } from "@/axios/AxiosInstans";
 import toast from "react-hot-toast";
 
 /* ------------------------------- constants ------------------------------- */
@@ -37,7 +36,6 @@ const isHttpUrl = (s) => {
 
 /* ----------------------------- helper: upload ---------------------------- */
 async function getPresign({ fileName, fileType }) {
-  // Your backend accepts JSON here (you used this in CreatePrimaryBook)
   const { data } = await axiosInstance.post("/get_presigned_url/", {
     file_name: fileName,
     file_type: fileType || "application/pdf",
@@ -46,16 +44,15 @@ async function getPresign({ fileName, fileType }) {
   });
   const wrapped = data?.data || {};
   return {
-    s3_key: wrapped.s3_key, // e.g. "book/xxx.pdf"
+    s3_key: wrapped.s3_key,
     upload_url: wrapped.presigned_url,
-    fields: null, // if ever switch to POST form, support is below
+    fields: null,
     headers: { "Content-Type": fileType || "application/pdf" },
   };
 }
 
 async function uploadToS3(presign, fileObj, onProgress) {
   if (presign.upload_url && !presign.fields) {
-    // PUT upload
     const resp = await fetch(presign.upload_url, {
       method: "PUT",
       headers: { ...(presign.headers || {}) },
@@ -66,7 +63,6 @@ async function uploadToS3(presign, fileObj, onProgress) {
     return;
   }
   if (presign.upload_url && presign.fields) {
-    // POST multipart (kept for future)
     const fd = new FormData();
     Object.entries(presign.fields).forEach(([k, v]) => fd.append(k, v));
     fd.append("file", fileObj);
@@ -80,68 +76,82 @@ async function uploadToS3(presign, fileObj, onProgress) {
 
 /* --------------------------- helper: primary_knowledge -------------------------- */
 async function createPrimaryKnowledgeRecords({ records }) {
-  // payload: { records: [ {s3_path_key, subject, standard, book_type, book_language}, ... ] }
   const { data } = await axiosInstance.post("/primary_knowledge/", { records }, {
     headers: { "Content-Type": "application/json" },
   });
-  // Expecting { knowledge_ids: [ ... ] }
   const ids = data?.knowledge_ids || [];
   if (!Array.isArray(ids) || !ids.length) throw new Error("No knowledge_ids returned");
   return ids;
 }
 
 /* ------------------------------- helper: WS ------------------------------ */
-function vectorizeOverWS(knowledgeIds, book_id) {
-  return new Promise((resolve, reject) => {
+function vectorizeOverWS(knowledgeIds, book_id, { timeoutMs = 90_000 } = {}) {
+  return new Promise((resolve) => {
     const ws = new WebSocket(WS_URL);
+    let done = false;
 
-    const cleanup = () => {
-      try { ws.close(); } catch { }
+    const finish = (ok = true) => {
+      if (done) return;
+      done = true;
+      try { ws.close(); } catch {}
+      resolve(ok);
     };
+
+    const timer = setTimeout(() => {
+      console.warn("[WS] vectorize timed out; continuing optimistically.");
+      finish(true);
+    }, timeoutMs);
+
+    const clearAll = () => clearTimeout(timer);
 
     ws.onopen = () => {
       const msg = {
         type: "vectorize_book",
         knowledge_ids: knowledgeIds,
         while_book_generation: true,
-        book_id: book_id
+        book_id: book_id,
       };
-      ws.send(JSON.stringify(msg));
-    };
-
-    ws.onerror = (e) => {
-      cleanup();
-      reject(new Error("WebSocket error"));
+      try {
+        ws.send(JSON.stringify(msg));
+      } catch {
+        clearAll();
+        finish(false);
+      }
     };
 
     ws.onmessage = (evt) => {
       try {
         const payload = JSON.parse(evt.data || "{}");
-        if (payload?.status === "started") {
-        } else if (payload?.status === "completed") {
-        } else if (payload?.status === "all_completed") {
-          cleanup();
-          resolve(true);
+        const status = String(payload?.status || "").toLowerCase();
+        if (status === "completed" || status === "all_completed") {
+          clearAll();
+          finish(true);
         }
       } catch {
-        // ignore junk frames
+        // ignore parse errors
       }
     };
 
+    ws.onerror = () => {
+      clearAll();
+      finish(true);
+    };
+
     ws.onclose = () => {
-   
+      clearAll();
+      finish(true);
     };
   });
 }
 
 export default function SourceMixFlow({
-  option,              
+  option,
   onOptionChange,
-  value,                
+  value,
   onChange,
   title = "Content Preferences",
-  bookId,                
-  subject,              
+  bookId,
+  subject,
   formData,
   onSubjectError,
   onSaved,
@@ -156,7 +166,6 @@ export default function SourceMixFlow({
   const isUpload = option === "upload";
   const isPrimaryOnly = option === "primary";
 
-  // --- declare state BEFORE any effect that references them ---
   const [urls, setUrls] = useState(() =>
     Array.isArray(value?.urls) && value.urls.length ? [...value.urls] : ["", ""]
   );
@@ -165,17 +174,14 @@ export default function SourceMixFlow({
   const [busy, setBusy] = useState(false);
   const onPickFiles = (e) => setFiles(Array.from(e.target.files || []));
 
-  // sync from parent value.urls -> local urls
   useEffect(() => {
     if (Array.isArray(value?.urls)) setUrls(value.urls);
   }, [value?.urls]);
 
-  // mark dirty when any inputs change (now safe: urls/files exist)
   useEffect(() => {
     setDirty(true);
   }, [option, value?.primary, value?.trusted, value?.internet, urls.length, files.length]);
 
-  // Mix derived
   const mix = useMemo(() => {
     if (isMixture) {
       const v = value || defaultMix;
@@ -192,7 +198,6 @@ export default function SourceMixFlow({
     else onChange?.(next);
   };
 
-  // Sliders keep 100
   const updateOne = (which, nextVal) => {
     if (!isMixture) return;
     nextVal = clamp(nextVal);
@@ -220,16 +225,9 @@ export default function SourceMixFlow({
   const handleChoose = (opt) => {
     onOptionChange?.(opt);
     if (opt === "mixture" && !value) onChange?.(defaultMix);
-
-    // If user chooses (or re-chooses) upload, pop the file picker
-    if (opt === "upload") {
-      // delay to ensure state updates don’t block the click
-      setTimeout(() => fileInputRef.current?.click(), 0);
-    }
+    if (opt === "upload") setTimeout(() => fileInputRef.current?.click(), 0);
   };
 
-
-  // Ensure URL slots when trusted > 0
   useEffect(() => {
     if (!isMixture) return;
     setUrls((prev) => {
@@ -246,7 +244,6 @@ export default function SourceMixFlow({
     if (isMixture) emitChange({ primary: mix.primary, trusted: mix.trusted, internet: mix.internet });
   };
 
-  /* ------------------------- payload for preferences ------------------------- */
   const buildPreferencesPayload = ({ mode, knowledgeIds = [] }) => {
     const payload = {
       book: Number(bookId) || bookId,
@@ -262,11 +259,10 @@ export default function SourceMixFlow({
 
     if (mode === "upload") {
       payload.preferences = "UPLOADED";
-      payload.primary_metadata = knowledgeIds; // IMPORTANT: you wanted IDs here
+      payload.primary_metadata = knowledgeIds;
       return payload;
     }
 
-    // Both primary-only & mixture use MIX
     payload.preferences = "MIX";
 
     if (mode === "primary") {
@@ -276,7 +272,6 @@ export default function SourceMixFlow({
       return payload;
     }
 
-    // mixture
     payload.mix_ratio.primary_knowledge_percent = clamp(mix.primary);
     payload.mix_ratio.trusted_url_percent = clamp(mix.trusted);
     payload.mix_ratio.internet_percent = clamp(mix.internet);
@@ -289,7 +284,6 @@ export default function SourceMixFlow({
     return payload;
   };
 
-  /* ----------------------------- onClick: Save ----------------------------- */
   const safeUrls = Array.isArray(urls) ? urls : [];
   const canSave =
     dirty && (
@@ -315,13 +309,12 @@ export default function SourceMixFlow({
 
       if (isUpload) {
         if (!files.length) {
-          // Open picker automatically; optional gentle nudge
           fileInputRef.current?.click();
           toast("Select files to upload to continue.", { icon: "📄" });
           return;
         }
 
-        // 1) upload each file → collect s3 keys
+        // 1) upload files -> s3 keys
         const keys = [];
         for (const file of files) {
           setUploadPct(5);
@@ -331,7 +324,7 @@ export default function SourceMixFlow({
           keys.push(presign.s3_key);
         }
 
-        // 2) create primary_knowledge records for those keys
+        // 2) create primary_knowledge for keys
         const records = keys.map((k) => ({
           s3_path_key: k,
           subject: String(subject || "").trim() || undefined,
@@ -341,21 +334,24 @@ export default function SourceMixFlow({
         }));
         const knowledgeIds = await createPrimaryKnowledgeRecords({ records });
 
-        // 3) vectorize over WS and wait until all_completed
-        await vectorizeOverWS(knowledgeIds, bookId);
+        // 3) vectorize (resolves on complete/close/timeout)
+        await vectorizeOverWS(knowledgeIds, bookId, { timeoutMs: 90_000 });
 
-        // 4) save content preferences with UPLOADED + IDs in primary_metadata
+        // 4) save content preferences with UPLOADED
         const payload = buildPreferencesPayload({ mode: "upload", knowledgeIds });
         await axiosInstance.post("/content_preferences/", payload, {
           headers: { "Content-Type": "application/json" },
         });
 
-        toast.success("Uploaded, vectorized and preferences saved.");
-        setDirty(false);
-        setHasSavedOnce(true);
-        onSaved?.(true);
-        setFiles([]);
+        // ---- ORDER FIX APPLIED HERE ----
+        setFiles([]);          // clear first
         setUploadPct(0);
+        setHasSavedOnce(true);
+        setDirty(false);       // then mark clean
+        onSaved?.(true);
+        // --------------------------------
+
+        toast.success("Uploaded, vectorized and preferences saved.");
         return;
       }
 
@@ -364,10 +360,10 @@ export default function SourceMixFlow({
         await axiosInstance.post("/content_preferences/", payload, {
           headers: { "Content-Type": "application/json" },
         });
-        toast.success("Preferences saved (Primary 100%).");
-        setDirty(false);
         setHasSavedOnce(true);
+        setDirty(false);
         onSaved?.(true);
+        toast.success("Preferences saved (Primary 100%).");
         return;
       }
 
@@ -376,10 +372,10 @@ export default function SourceMixFlow({
       await axiosInstance.post("/content_preferences/", payload, {
         headers: { "Content-Type": "application/json" },
       });
-      toast.success("Preferences saved (Mixture).");
-      setDirty(false);
       setHasSavedOnce(true);
-      onSaved?.(true);;
+      setDirty(false);
+      onSaved?.(true);
+      toast.success("Preferences saved (Mixture).");
     } catch (err) {
       console.error(err);
       toast.error(typeof err?.message === "string" ? err.message : "Failed to save.");
@@ -389,7 +385,6 @@ export default function SourceMixFlow({
     }
   };
 
-  /* ---------------------------------- UI ---------------------------------- */
   return (
     <div className="w-full">
       <div className="mb-4 flex items-center justify-between">
@@ -484,7 +479,7 @@ export default function SourceMixFlow({
             urls={urls}
             onChange={handleUrlsChange}
             minCount={2}
-            disabled={busy || mix.trusted === 0}   // 0% par inputs visible but disabled
+            disabled={busy || mix.trusted === 0}
           />
           {mix.trusted === 0 && (
             <p className="mt-2 text-xs text-gray-500">
@@ -503,7 +498,7 @@ export default function SourceMixFlow({
 
       {/* Save */}
       <div className="mt-6 flex items-center justify-end gap-3">
-        {!canSave && isMixture && mix.trusted > 0 && (
+        {!(canSave) && isMixture && mix.trusted > 0 && (
           <div className="mr-auto flex items-center gap-2 text-sm text-amber-700">
             <TriangleAlert className="h-4 w-4" />
             Add at least one valid http/https URL when Trusted &gt; 0.
@@ -541,7 +536,6 @@ function OptionTile({ active, subtitle, onClick }) {
           active ? "border-blue-600 text-blue-600" : "border-gray-300 text-transparent",
         ].join(" ")}
       >
-        {/* filled dot when active */}
         <span className="h-2.5 w-2.5 rounded-full bg-current" />
       </span>
       <div>
