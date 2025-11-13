@@ -125,7 +125,7 @@ export default function BookGrid({
   return (
     <div className="w-full">
       {/* ---- top analytics ---- */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-4 gap-4 mb-6">
         <StatCard icon={<BookOpen className="h-5 w-5" />} label="Total Books" value={stats.total} tone="blue" />
         <StatCard icon={<CheckSquare className="h-5 w-5" />} label="Completed" value={stats.completed} tone="green" />
         <StatCard icon={<Activity className="h-5 w-5" />} label="In Progress" value={stats.inProgress} tone="indigo" />
