@@ -400,7 +400,7 @@ export default function SourceMixFlow({
         />
         <OptionTile
           active={isPrimaryOnly}
-          subtitle="Primary Only"
+          subtitle="Primary DB"
           onClick={() => handleChoose("primary")}
         />
         <OptionTile
@@ -498,12 +498,6 @@ export default function SourceMixFlow({
 
       {/* Save */}
       <div className="mt-6 flex items-center justify-end gap-3">
-        {!(canSave) && isMixture && mix.trusted > 0 && (
-          <div className="mr-auto flex items-center gap-2 text-sm text-amber-700">
-            <TriangleAlert className="h-4 w-4" />
-            Add at least one valid http/https URL when Trusted &gt; 0.
-          </div>
-        )}
         <button
           type="button"
           onClick={onClickSave}

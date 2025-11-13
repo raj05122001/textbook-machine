@@ -84,7 +84,7 @@ export function Step3SyllabusInput({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Subject *
@@ -102,16 +102,6 @@ export function Step3SyllabusInput({
           {subjectError && (
             <p className="mt-1 text-sm text-red-600">{subjectError}</p>
           )}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Book ID (created)
-          </label>
-          <input
-            disabled
-            value={bookId ?? "—"}
-            className="w-full px-4 py-3 border border-gray-200 bg-gray-50 rounded-lg text-gray-600"
-          />
         </div>
       </div>
 
@@ -211,11 +201,6 @@ export function Step3SyllabusInput({
             placeholder="Paste your syllabus, notes, or any text content here..."
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <div className="mt-2 text-sm text-gray-500">
-            {textContent.length.toLocaleString()} characters •{" "}
-            {Math.ceil((textContent.split(" ").length || 0) / 250)} estimated
-            pages
-          </div>
         </div>
       )}
       <SourceMixFlow
