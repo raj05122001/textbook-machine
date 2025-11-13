@@ -4,13 +4,31 @@ import { useMemo, useState, useEffect } from 'react';
 import { Search, BookOpen, CheckSquare, Activity, Edit3, FileText, SortAsc, SortDesc } from 'lucide-react';
 import BookTile from './BookCard';
 
-export default function BookGrid({ books = [], loading = false, onBookSelect }) {
+export default function BookGrid({
+  books = [],
+  loading = false,
+  onBookSelect,
+  statusFromUrl,           // NEW: controlled status from URL
+  onStatusChange,          // NEW: notify parent (page) when status changes
+}) {
   /* ---------------- state ---------------- */
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all | published | completed | in-progress | draft
   const [sortBy, setSortBy] = useState('lastModified');    // lastModified | createdAt | title | chapters
   const [sortOrder, setSortOrder] = useState('desc');      // asc | desc
+
+  /* ---- sync filter with URL param ---- */
+  useEffect(() => {
+    if (!statusFromUrl) return;
+    setStatusFilter(statusFromUrl);
+  }, [statusFromUrl]);
+
+  /* ---- helper to change status everywhere ---- */
+  const changeStatus = (status) => {
+    setStatusFilter(status);
+    onStatusChange?.(status);   // tell parent so it updates URL
+  };
 
   /* ------------- debounce search ---------- */
   useEffect(() => {
@@ -135,18 +153,15 @@ export default function BookGrid({ books = [], loading = false, onBookSelect }) 
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Chip label="All" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
-          <Chip label="Published" active={statusFilter === 'published'} onClick={() => setStatusFilter('published')} />
-          <Chip label="Completed" active={statusFilter === 'completed'} onClick={() => setStatusFilter('completed')} />
-          <Chip label="In Progress" active={statusFilter === 'in-progress'} onClick={() => setStatusFilter('in-progress')} />
-          <Chip label="Draft" active={statusFilter === 'draft'} onClick={() => setStatusFilter('draft')} />
-
+          <Chip label="All"         active={statusFilter === 'all'}         onClick={() => changeStatus('all')} />
+          <Chip label="Published"   active={statusFilter === 'published'}   onClick={() => changeStatus('published')} />
+          <Chip label="Completed"   active={statusFilter === 'completed'}   onClick={() => changeStatus('completed')} />
+          <Chip label="In Progress" active={statusFilter === 'in-progress'} onClick={() => changeStatus('in-progress')} />
+          <Chip label="Draft"       active={statusFilter === 'draft'}       onClick={() => changeStatus('draft')} />
         </div>
       </div>
 
-
       <div className="-mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-0 pb-4">
-
         <div className="text-sm text-gray-500">
           Showing <span className="font-medium text-gray-700">{filtered.length}</span> of{" "}
           <span className="font-medium text-gray-700">{books.length}</span> books
@@ -172,8 +187,6 @@ export default function BookGrid({ books = [], loading = false, onBookSelect }) 
           </button>
         </div>
       </div>
-
-
 
       {/* ---- grid ---- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -217,10 +230,11 @@ function Chip({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${active
-        ? 'bg-blue-600 text-white border-blue-600'
-        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-        }`}
+      className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+        active
+          ? 'bg-blue-600 text-white border-blue-600'
+          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+      }`}
     >
       {label}
     </button>

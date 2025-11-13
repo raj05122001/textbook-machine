@@ -454,9 +454,9 @@ function bookToPagesWithTheme(book, theme) {
               ? `<h3 style="margin:0 0 8px 0;color:${accent};">${_escapeHtml(uTitle)} • ${ui + 1}.${li + 1} ${_escapeHtml(
                 lTitle
               )}</h3>
-             <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div>`
+                                 `
               : `<h3 style="margin:0 0 8px 0;color:${accent2};">${_escapeHtml(lTitle)} — Page ${bi + 1}</h3>`;
-
+          {/* <div style="color:#64748b;font-size:12px;margin-bottom:10px">(Estimated pages: ${lPages})</div> */ }
           const safeHtml = stripScripts(b);
           const body = `${titleTop}<div style="line-height:1.6;color:${text}">${safeHtml}</div>`;
 
@@ -2492,11 +2492,11 @@ export default function BookDetailsPage() {
                 ref={tocRef}
                 style={{
                   position: "sticky",
-                  top: 16,                         
+                  top: 16,
                   alignSelf: "stretch",
 
                   maxHeight: "calc(100vh - 140px)",
-                  overflowY: "auto",         
+                  overflowY: "auto",
                   overflowX: "hidden",
 
                   border: "1px solid #e2e8f0",

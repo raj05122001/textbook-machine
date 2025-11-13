@@ -99,6 +99,7 @@ function denormalizeSyllabus(doc) {
 export default function CreateBookPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [fieldErrors, setFieldErrors] = useState({});
 
   /* ---------- steps ---------- */
   const steps = [
@@ -152,16 +153,16 @@ export default function CreateBookPage() {
     title: "",
     author: "",
     description: "",
-    category: "ACADEMICS",
-    language: "ENGLISH",
-    educational_level: "12TH",
-    difficulty_level: "MODERATE",
-    teaching_style: "PRACTICAL",
+    category: "",
+    language: "",
+    educational_level: "",
+    difficulty_level: "",
+    teaching_style: "",
     model_preference: "OPENAI",
-    country_region: "INDIA",
-    expected_pages: 200,
-    target_group: "STUDENTS",
-    visibility: "private",
+    country_region: "",
+    expected_pages: "",
+    target_group: "",
+    visibility: "",
     processingOptions: {},
   });
 
@@ -463,23 +464,42 @@ export default function CreateBookPage() {
   /* ================== VALIDATION & NAV ================== */
   const validateStep = (step) => {
     const newErrors = [];
+    const newFieldErrors = {}; // 👉 step-1 ke field based errors
+
+    // 🔹 STEP 1: Title + Author ke errors sirf field-wise
     if (step === 1) {
-      if (!formData.title.trim()) newErrors.push("Book title is required");
-      if (!formData.author.trim()) newErrors.push("Author name is required");
+      if (!formData.title.trim()) {
+        newFieldErrors.title = "Book title is required";
+      }
+      if (!formData.author.trim()) {
+        newFieldErrors.author = "Name is required";
+      }
     }
+
+    // 🔹 STEP 2: ye errors upar wale red box me hi rahenge
     if (step === 2) {
       if (!formData.category) newErrors.push("Category is required");
       if (!formData.language) newErrors.push("Language is required");
       if (!formData.model_preference)
         newErrors.push("Model preference is required");
     }
+
+    // 🔹 STEP 3: ye bhi top error box me
     if (step === 3) {
       if (!bookId) newErrors.push("Book is not created yet.");
       if (!subject.trim()) newErrors.push("Subject is required for syllabus.");
     }
+
+    // ✅ set both type of errors
+    setFieldErrors(newFieldErrors);
     setErrors(newErrors);
-    return newErrors.length === 0;
+
+    // form tabhi valid hai jab dono arrays empty hon
+    return (
+      newErrors.length === 0 && Object.keys(newFieldErrors).length === 0
+    );
   };
+
 
   const markDoneAndNext = (step) => {
     setCompletedSteps((prev) => new Set([...prev, step]));
@@ -812,7 +832,11 @@ export default function CreateBookPage() {
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {currentStep === 1 && (
-            <Step1BookDetails formData={formData} setFormData={setFormData} />
+            <Step1BookDetails
+              formData={formData}
+              setFormData={setFormData}
+              fieldErrors={fieldErrors}
+              setFieldErrors={setFieldErrors} />
           )}
 
           {currentStep === 2 && (
@@ -867,16 +891,22 @@ export default function CreateBookPage() {
           )}
 
           {/* Footer Nav */}
+          {/* Footer Nav */}
           {currentStep < 4 && (
             <div className="flex items-center justify-between pt-8 mt-8 border-t border-gray-200">
-              <button
-                onClick={prevStep}
-                disabled={currentStep === 1}
-                className="flex items-center space-x-2 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                <span>Previous</span>
-              </button>
+              {/* 👈 Step 1 par Previous button HIDE */}
+              {currentStep > 1 ? (
+                <button
+                  onClick={prevStep}
+                  className="flex items-center space-x-2 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span>Previous</span>
+                </button>
+              ) : (
+                // layout balance ke liye empty div
+                <div className="w-[120px]" />
+              )}
 
               <div className="text-sm text-gray-600">
                 Step {currentStep} of {steps.length}
@@ -887,7 +917,11 @@ export default function CreateBookPage() {
                   onClick={createSyllabus}
                   disabled={!contentPrefsSaved}
                   className="flex items-center space-x-2 px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={contentPrefsSaved ? "Create syllabus" : "First save Content Preferences"}
+                  title={
+                    contentPrefsSaved
+                      ? "Create syllabus"
+                      : "First save Content Preferences"
+                  }
                 >
                   <Sparkles className="h-4 w-4" />
                   <span>Create Syllabus</span>
@@ -904,6 +938,7 @@ export default function CreateBookPage() {
               )}
             </div>
           )}
+
         </div>
 
         {/* Help */}
