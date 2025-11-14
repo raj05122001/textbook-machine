@@ -1,11 +1,12 @@
-"use client"
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Book, 
-  Users, 
-  TrendingUp, 
-  Star, 
-  Clock, 
+"use client";
+import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
+import {
+  Book,
+  Users,
+  TrendingUp,
+  Star,
+  Clock,
   Download,
   Edit3,
   Plus,
@@ -23,15 +24,16 @@ import {
   ChevronRight,
   Bookmark,
   FileText,
-  BarChart3
-} from 'lucide-react';
+  BarChart3,
+} from "lucide-react";
 
 const Dashboard = () => {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
-  const [selectedTimeframe, setSelectedTimeframe] = useState('week');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTimeframe, setSelectedTimeframe] = useState("week");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activity, setActivity] = useState([]);
 
   // Sample dashboard data
   useEffect(() => {
@@ -54,7 +56,7 @@ const Dashboard = () => {
           createdAt: "2024-01-15T10:30:00Z",
           lastModified: "2024-08-20T14:22:00Z",
           coverColor: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          visibility: "public"
+          visibility: "public",
         },
         {
           id: 2,
@@ -73,7 +75,7 @@ const Dashboard = () => {
           createdAt: "2024-03-10T09:15:00Z",
           lastModified: "2024-08-25T16:45:00Z",
           coverColor: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-          visibility: "private"
+          visibility: "private",
         },
         {
           id: 3,
@@ -92,52 +94,54 @@ const Dashboard = () => {
           createdAt: "2024-02-28T11:20:00Z",
           lastModified: "2024-08-24T13:30:00Z",
           coverColor: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-          visibility: "shared"
-        }
+          visibility: "shared",
+        },
       ];
 
       const sampleActivity = [
         {
           id: 1,
-          type: 'edit',
-          book: 'Mathematics for Class 10',
-          action: 'Modified Chapter 12: Statistics',
-          timestamp: '2 hours ago',
-          icon: Edit3
+          type: "edit",
+          book: "Mathematics for Class 10",
+          action: "Modified Chapter 12: Statistics",
+          timestamp: "2 hours ago",
+          icon: Edit3,
         },
-        {
-          id: 2,
-          type: 'share',
-          book: 'Physics Fundamentals',
-          action: 'Shared with Physics Department',
-          timestamp: '5 hours ago',
-          icon: Share2
-        },
+        [
+          {
+            id: 2,
+            type: "share",
+            book: "Physics Fundamentals",
+            action: "Shared with Physics Department",
+            timestamp: "5 hours ago",
+            icon: Share2,
+          },
+        ],
         {
           id: 3,
-          type: 'create',
-          book: 'Advanced Algorithms',
-          action: 'Added new chapter on Graph Theory',
-          timestamp: '1 day ago',
-          icon: Plus
+          type: "create",
+          book: "Advanced Algorithms",
+          action: "Added new chapter on Graph Theory",
+          timestamp: "1 day ago",
+          icon: Plus,
         },
         {
           id: 4,
-          type: 'backup',
-          book: 'Mathematics for Class 10',
-          action: 'Automatic backup completed',
-          timestamp: '2 days ago',
-          icon: Archive
+          type: "backup",
+          book: "Mathematics for Class 10",
+          action: "Automatic backup completed",
+          timestamp: "2 days ago",
+          icon: Archive,
         },
         {
           id: 5,
-          type: 'review',
-          book: 'Physics Fundamentals',
-          action: 'Received 5-star review from Dr. Smith',
-          timestamp: '3 days ago',
-          icon: Star
-        }
-      ];
+          type: "review",
+          book: "Physics Fundamentals",
+          action: "Received 5-star review from Dr. Smith",
+          timestamp: "3 days ago",
+          icon: Star,
+        },
+      ].flat();
 
       setBooks(sampleBooks);
       setActivity(sampleActivity);
@@ -147,21 +151,22 @@ const Dashboard = () => {
     loadDashboardData();
   }, []);
 
-  const [activity, setActivity] = useState([]);
-
   // Calculate dashboard statistics
   const dashboardStats = useMemo(() => {
     const totalBooks = books.length;
-    const completedBooks = books.filter(book => book.status === 'completed').length;
-    const draftBooks = books.filter(book => book.status === 'draft').length;
-    const reviewBooks = books.filter(book => book.status === 'review').length;
+    const completedBooks = books.filter((book) => book.status === "completed").length;
+    const draftBooks = books.filter((book) => book.status === "draft").length;
+    const reviewBooks = books.filter((book) => book.status === "review").length;
     const totalWords = books.reduce((sum, book) => sum + book.wordCount, 0);
     const totalChapters = books.reduce((sum, book) => sum + book.chapters, 0);
-    const averageRating = books.length > 0 ? books.reduce((sum, book) => sum + book.rating, 0) / books.length : 0;
+    const averageRating =
+      books.length > 0
+        ? books.reduce((sum, book) => sum + book.rating, 0) / books.length
+        : 0;
     const totalDownloads = books.reduce((sum, book) => sum + book.downloadCount, 0);
     const totalBookmarks = books.reduce((sum, book) => sum + book.bookmarkCount, 0);
     const totalShares = books.reduce((sum, book) => sum + book.shareCount, 0);
-    const completionRate = totalBooks > 0 ? ((completedBooks / totalBooks) * 100) : 0;
+    const completionRate = totalBooks > 0 ? (completedBooks / totalBooks) * 100 : 0;
 
     return {
       totalBooks,
@@ -174,33 +179,34 @@ const Dashboard = () => {
       totalDownloads,
       totalBookmarks,
       totalShares,
-      completionRate
+      completionRate,
     };
   }, [books]);
 
   const statusConfig = {
-    draft: { label: 'Draft', color: 'bg-yellow-100 text-yellow-800', icon: Edit3 },
-    completed: { label: 'Completed', color: 'bg-green-100 text-green-800', icon: CheckCircle },
-    review: { label: 'In Review', color: 'bg-purple-100 text-purple-800', icon: Eye },
-    planning: { label: 'Planning', color: 'bg-gray-100 text-gray-800', icon: Target }
+    draft: { label: "Draft", color: "bg-yellow-100 text-yellow-800", icon: Edit3 },
+    completed: { label: "Completed", color: "bg-green-100 text-green-800", icon: CheckCircle },
+    review: { label: "In Review", color: "bg-purple-100 text-purple-800", icon: Eye },
+    planning: { label: "Planning", color: "bg-gray-100 text-gray-800", icon: Target },
   };
 
   const visibilityConfig = {
-    private: { label: 'Private', color: 'text-gray-600', icon: '🔒' },
-    shared: { label: 'Shared', color: 'text-blue-600', icon: '👥' },
-    public: { label: 'Public', color: 'text-green-600', icon: '🌍' }
+    private: { label: "Private", color: "text-gray-600", icon: "🔒" },
+    shared: { label: "Shared", color: "text-blue-600", icon: "👥" },
+    public: { label: "Public", color: "text-green-600", icon: "🌍" },
   };
 
   const formatNumber = (num) => {
     if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'k';
+      return (num / 1000).toFixed(1) + "k";
     }
     return num.toString();
   };
 
-  const filteredBooks = books.filter(book =>
-    book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    book.subtitle.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredBooks = books.filter(
+    (book) =>
+      book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      book.subtitle.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -221,7 +227,9 @@ const Dashboard = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-            <p className="text-gray-600 mt-1">Manage your textbooks and track progress</p>
+            <p className="text-gray-600 mt-1">
+              Manage your textbooks and track progress
+            </p>
           </div>
           <div className="flex items-center space-x-4">
             <div className="relative">
@@ -234,10 +242,15 @@ const Dashboard = () => {
                 className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
-            <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+
+            {/* 🔁 REPLACED BUTTON WITH SIDEBAR-STYLE LINK */}
+            <Link
+              href="/create-book"
+              className="flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 shadow-sm"
+            >
               <Plus className="h-4 w-4" />
-              <span>New Book</span>
-            </button>
+              <span>Create New Book</span>
+            </Link>
           </div>
         </div>
       </div>
@@ -249,7 +262,9 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Books</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">{dashboardStats.totalBooks}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-2">
+                  {dashboardStats.totalBooks}
+                </p>
               </div>
               <div className="p-3 bg-blue-100 rounded-lg">
                 <Book className="h-6 w-6 text-blue-600" />
@@ -268,7 +283,9 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Words</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">{formatNumber(dashboardStats.totalWords)}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-2">
+                  {formatNumber(dashboardStats.totalWords)}
+                </p>
               </div>
               <div className="p-3 bg-green-100 rounded-lg">
                 <FileText className="h-6 w-6 text-green-600" />
@@ -285,7 +302,9 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Average Rating</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">{dashboardStats.averageRating.toFixed(1)}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-2">
+                  {dashboardStats.averageRating.toFixed(1)}
+                </p>
               </div>
               <div className="p-3 bg-yellow-100 rounded-lg">
                 <Star className="h-6 w-6 text-yellow-600" />
@@ -302,7 +321,9 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Completion Rate</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">{dashboardStats.completionRate.toFixed(0)}%</p>
+                <p className="text-2xl font-bold text-gray-900 mt-2">
+                  {dashboardStats.completionRate.toFixed(0)}%
+                </p>
               </div>
               <div className="p-3 bg-purple-100 rounded-lg">
                 <Target className="h-6 w-6 text-purple-600" />
@@ -310,7 +331,7 @@ const Dashboard = () => {
             </div>
             <div className="mt-4">
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
+                <div
                   className="bg-purple-600 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${dashboardStats.completionRate}%` }}
                 ></div>
@@ -333,8 +354,11 @@ const Dashboard = () => {
             <div className="p-6">
               <div className="space-y-4">
                 {filteredBooks.map((book) => (
-                  <div key={book.id} className="flex items-center space-x-4 p-4 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
-                    <div 
+                  <div
+                    key={book.id}
+                    className="flex items-center space-x-4 p-4 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors"
+                  >
+                    <div
                       className="w-12 h-16 rounded-lg flex items-center justify-center text-white font-bold"
                       style={{ background: book.coverColor }}
                     >
@@ -346,7 +370,9 @@ const Dashboard = () => {
                           {book.title}
                         </h3>
                         <div className="flex items-center space-x-2">
-                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusConfig[book.status].color}`}>
+                          <span
+                            className={`px-2 py-1 text-xs font-medium rounded-full ${statusConfig[book.status].color}`}
+                          >
                             {statusConfig[book.status].label}
                           </span>
                           <span className="text-xs text-gray-500">
@@ -354,7 +380,9 @@ const Dashboard = () => {
                           </span>
                         </div>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1 truncate">{book.subtitle}</p>
+                      <p className="text-xs text-gray-500 mt-1 truncate">
+                        {book.subtitle}
+                      </p>
                       <div className="flex items-center mt-2 space-x-4 text-xs text-gray-500">
                         <span className="flex items-center">
                           <FileText className="h-3 w-3 mr-1" />
@@ -371,7 +399,7 @@ const Dashboard = () => {
                       </div>
                       <div className="mt-2">
                         <div className="w-full bg-gray-200 rounded-full h-1">
-                          <div 
+                          <div
                             className="bg-blue-500 h-1 rounded-full transition-all duration-300"
                             style={{ width: `${book.completionProgress}%` }}
                           ></div>
@@ -435,21 +463,27 @@ const Dashboard = () => {
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <CheckCircle className="h-8 w-8 text-green-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">{dashboardStats.completedBooks}</h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {dashboardStats.completedBooks}
+                </h3>
                 <p className="text-sm text-gray-600">Completed Books</p>
               </div>
               <div className="text-center">
                 <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <Edit3 className="h-8 w-8 text-yellow-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">{dashboardStats.draftBooks}</h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {dashboardStats.draftBooks}
+                </h3>
                 <p className="text-sm text-gray-600">Draft Books</p>
               </div>
               <div className="text-center">
                 <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <Eye className="h-8 w-8 text-purple-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">{dashboardStats.reviewBooks}</h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {dashboardStats.reviewBooks}
+                </h3>
                 <p className="text-sm text-gray-600">Under Review</p>
               </div>
             </div>

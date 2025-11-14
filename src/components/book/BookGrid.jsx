@@ -168,7 +168,7 @@ export default function BookGrid({
         </div>
 
         {/* Right: controls */}
-        <div className="flex items-center gap-2 sm:ml-0 ml-auto">
+        {/* <div className="flex items-center gap-2 sm:ml-0 ml-auto">
           <select
             className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
             value={sortBy}
@@ -185,7 +185,7 @@ export default function BookGrid({
           >
             {sortOrder === "asc" ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
           </button>
-        </div>
+        </div> */}
       </div>
 
       {/* ---- grid ---- */}

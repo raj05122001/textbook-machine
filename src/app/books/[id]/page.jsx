@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -680,6 +680,13 @@ function ThemePanel({
   const [wmSize, setWmSize] = React.useState(56);
   const [wmAngle, setWmAngle] = React.useState(-30);
   const [saving, setSaving] = React.useState(false);
+  const [showBgInfo, setShowBgInfo] = useState(false);
+  // component ke top par:
+  const [panelReady, setPanelReady] = useState(false);
+
+  useEffect(() => {
+    setPanelReady(true);
+  }, []);
 
 
   const regenerate = React.useCallback(() => {
@@ -818,592 +825,931 @@ function ThemePanel({
         position: "sticky",
         top: 16,
         alignSelf: "start",
-        height: "calc(100vh - 32px)",
-        overflow: "auto",
-        border: "1px solid #e2e8f0",
-        borderRadius: 12,
-        background: "#fff",
-        padding: 12,
+        height: "calc(90vh - 32px)",
+        // Outer shell with glow + slide-in animation
+        padding: 1,
+        borderRadius: 18,
+        background:
+          "linear-gradient(135deg, rgba(56,189,248,0.18), rgba(129,140,248,0.22))",
+        opacity: panelReady ? 1 : 0,
+        transform: panelReady ? "translateX(0)" : "translateX(28px)",
+        transition: "opacity 220ms ease-out, transform 220ms ease-out",
       }}
     >
+      {/* Inner content card */}
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 8,
+          height: "100%",
+          borderRadius: 16,
+
+          border: "1px solid rgba(148,163,184,0.2)",
+          padding: 14,
+          overflow: "auto",
+          color: "#e5e7eb",
         }}
       >
-        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>
-          Theme settings
-        </div>
-        <button onClick={onClose} style={smallBtn} title="Close theme panel">
-          Close
-        </button>
-      </div>
-
-
-      <div style={{
-        display: "grid",
-        gap: 8,
-        marginBottom: 12,
-      }}>
-        <button
-          type="button"
-          onClick={handleSaveTheme}
-          disabled={saving}
+        {/* HEADER */}
+        <div
           style={{
-            height: 38,
-            borderRadius: 8,
-            border: "1px solid #e2e8f0",
-            padding: "8px 12px",
-            background: saving ? "#f1f5f9" : "#0ea5e9",
-            color: saving ? "#64748b" : "#fff",
-            cursor: saving ? "not-allowed" : "pointer",
-            fontWeight: 700,
-            justifySelf: "start",
-            minWidth: 160,
-            boxShadow: "0 1px 2px rgba(0,0,0,.06)"
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+            gap: 8,
           }}
-          title="Save current theme to book"
         >
-          {saving ? "Saving..." : "Save Theme"}
-        </button>
-
-      </div>
-
-
-
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 10,
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ color: "#0f172a", marginBottom: 8 }}>
-          Upload Page Background (A4, 2480×3508) — applies to all pages
-        </div>
-
-        <div style={{
-          display: "grid", gap: 8, fontSize: 12, color: "#334155",
-          gridTemplateColumns: "1fr 1fr", alignItems: "center", marginBottom: 8
-        }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={wmEnabled}
-              onChange={(e) => setWmEnabled(e.target.checked)}
-            />
-            <span style={{ fontWeight: 700 }}>Add watermark</span>
-          </label>
-
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontWeight: 600 }}>Opacity (0–1)</span>
-            <input
-              type="number" min={0} max={1} step={0.01}
-              value={wmOpacity}
-              onChange={(e) => setWmOpacity(Math.max(0, Math.min(1, Number(e.target.value) || 0)))}
-              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 8px" }}
-            />
-          </label>
-
-          <label style={{ gridColumn: "1 / -1", display: "grid", gap: 4 }}>
-            <span style={{ fontWeight: 600 }}>Watermark text</span>
-            <input
-              type="text"
-              value={wmText}
-              onChange={(e) => setWmText(e.target.value)}
-              placeholder="e.g. TBM+ / Book Title"
-              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 10px" }}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontWeight: 600 }}>Font size</span>
-            <input
-              type="number" min={10} max={200} step={2}
-              value={wmSize}
-              onChange={(e) => setWmSize(Math.max(10, Math.min(200, Number(e.target.value) || 56)))}
-              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 8px" }}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontWeight: 600 }}>Gap</span>
-            <input
-              type="number" min={60} max={400} step={10}
-              value={wmGap}
-              onChange={(e) => setWmGap(Math.max(60, Math.min(400, Number(e.target.value) || 220)))}
-              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 8px" }}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontWeight: 600 }}>Angle (°)</span>
-            <input
-              type="number" min={-90} max={90} step={1}
-              value={wmAngle}
-              onChange={(e) => setWmAngle(Math.max(-90, Math.min(90, Number(e.target.value) || -30)))}
-              style={{ height: 32, borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 8px" }}
-            />
-          </label>
-        </div>
-
-        <div style={{ display: "grid", gap: 8, fontSize: 12, color: "#334155" }}>
-          <input
-            id="bg-file"
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = () => {
-                const dataUrl = reader.result;
-                if (wmEnabled) {
-                  const wmDataUrl = createWatermarkedBackgroundSVG({
-                    imageUrl: dataUrl,
-                    text: wmText || "TBM+",
-                    opacity: wmOpacity,
-                    gap: wmGap,
-                    size: wmSize,
-                    angle: wmAngle,
-                  });
-                  onApplyBackgroundUrl?.(wmDataUrl);
-                } else {
-                  onApplyBackgroundUrl?.(dataUrl);
-                }
-              };
-              reader.readAsDataURL(file);
-              e.target.value = "";
-            }}
-            style={{
-              position: "absolute",
-              width: 1,
-              height: 1,
-              padding: 0,
-              margin: -1,
-              overflow: "hidden",
-              clip: "rect(0,0,0,0)",
-              whiteSpace: "nowrap",
-              border: 0,
-            }}
-            title="Select background image"
-          />
+          <div>
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: 14,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: "#000000ff",
+              }}
+            >
+              Theme settings
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "#000000ff",
+                marginTop: 2,
+              }}
+            >
+              Live preview updates instantly while you experiment.
+            </div>
+          </div>
 
           <button
-            type="button"
-            onClick={() => document.getElementById("bg-file")?.click()}
+            onClick={onClose}
             style={{
-              height: 36,
-              borderRadius: 8,
-              border: "1px solid #e2e8f0",
-              padding: "6px 12px",
-              background: "#fff",
-              color: "#0f172a",
-              cursor: "pointer",
-              fontWeight: 600,
-              justifySelf: "start",
-              width: "100%",
+              ...smallBtn,
+              borderRadius: 999,
+              border: "1px solid rgba(148,163,184,0.6)",
+              background:
+                "#fff",
+              color: "#010101ff",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 11,
+              paddingInline: 10,
+              transition: "transform 140ms ease-out, box-shadow 140ms ease-out",
             }}
-            aria-label="Choose page background"
+            title="Close theme panel"
+            onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.96)")}
+            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
-            Choose Background (all pages)
+            ✕ <span>Close</span>
           </button>
+        </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => onApplyBackgroundUrl?.("")}
-              style={{
-                height: 32,
-                borderRadius: 8,
-                border: "1px solid #e2e8f0",
-                padding: "0 10px",
-                background: "#fff",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-              title="Remove background"
-            >
-              Remove background
-            </button>
-          </div>
-
-          <div style={{ fontSize: 12, color: "#64748b" }}>
-            Tip: 2480×3508 (A4 @ 300 DPI) best rahega. SVG/data URL bhi chalega. Agar “Add watermark” on hai,
-            to upload hotey hi background me diagonal repeated text embed ho jayega.
+        {/* TOP ACTIONS */}
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleSaveTheme}
+            disabled={saving}
+            style={{
+              height: 40,
+              borderRadius: 999,
+              border: "1px solid rgba(56,189,248,0.6)",
+              padding: "8px 14px",
+               background:
+              "radial-gradient(circle at top left, rgba(148,163,184,0.18), rgba(15,23,42,0.9))",
+              color: saving ? "#9ca3af" : "#f9fafb",
+              cursor: saving ? "not-allowed" : "pointer",
+              fontWeight: 700,
+              justifySelf: "stretch",
+              minWidth: 160,
+              boxShadow: saving
+                ? "0 0 0 rgba(0,0,0,0)"
+                : "0 12px 30px rgba(59,130,246,0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              fontSize: 13,
+              letterSpacing: 0.3,
+              textTransform: "uppercase",
+              transition:
+                "transform 140ms ease-out, box-shadow 140ms ease-out, background 160ms ease-out",
+            }}
+            title="Save current theme to book"
+            onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          >
+            {saving ? (
+              <>
+                <span
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: "999px",
+                    border: "2px solid rgba(148,163,184,0.6)",
+                    
+                    borderTopColor: "#e5e7eb",
+                    animation: "spin 0.7s linear infinite",
+                  }}
+                />
+                Saving…
+              </>
+            ) : (
+              <>
+                💾 Save Theme
+              </>
+            )}
+          </button>
+          <div
+            style={{
+              fontSize: 11,
+              color: "#000000ff",
+            }}
+          >
+            Tip: Theme is saved with this book and reused on export.
           </div>
         </div>
-      </div>
 
-
-      <label
-        style={{
-          display: "grid",
-          gap: 6,
-          marginBottom: 12,
-          fontSize: 12,
-          color: "#334155",
-        }}
-      >
-        <span style={{ fontWeight: 700 }}>Or upload a cover (2480 × 3508)</span>
-
-        <input
-          id="cover-file"
-          type="file"
-          accept="image/*"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file && onPickImage) onPickImage(file);
-          }}
+        {/* ========== BG IMAGE SECTION ========== */}
+        <div
           style={{
-            position: "absolute",
-            width: 1,
-            height: 1,
-            padding: 0,
-            margin: -1,
-            overflow: "hidden",
-            clip: "rect(0, 0, 0, 0)",
-            whiteSpace: "nowrap",
-            border: 0,
+            border: "1px solid rgba(148,163,184,0.45)",
+            borderRadius: 14,
+            padding: 10,
+            marginBottom: 12,
+            background:
+              "radial-gradient(circle at top left, rgba(148,163,184,0.18), rgba(15,23,42,0.9))",
           }}
-          title="Select an image to show on top"
-        />
-
-
-        <button
-          type="button"
-          onClick={() => document.getElementById("cover-file")?.click()}
-          style={{
-            height: 36,
-            borderRadius: 8,
-            border: "1px solid #e2e8f0",
-            padding: "6px 12px",
-            background: "#fff",
-            color: "#0f172a",
-            cursor: "pointer",
-            fontWeight: 600,
-            justifySelf: "start",
-            width: "100%",
-          }}
-          aria-label="Choose cover page"
         >
-          Choose Cover page
-        </button>
-
-
-        <button
-          type="button"
-          onClick={onSaveCover}
-          disabled={!coverFile || savingCover}
-          style={{
-            height: 36,
-            borderRadius: 8,
-            border: savingCover ? "1px solid #93c5fd" : "1px solid #3b82f6",
-            padding: "6px 12px",
-            background: savingCover ? "#bfdbfe" : "#3b82f6",
-            color: "#fff",
-            cursor: !coverFile || savingCover ? "not-allowed" : "pointer",
-            fontWeight: 700,
-            justifySelf: "start",
-            width: "100%",
-          }}
-          aria-label="Save cover page"
-          title={coverFile ? "Upload this image as cover_page" : "Choose an image first"}
-        >
-          {savingCover ? "Saving…" : "Save Cover"}
-        </button>
-
-      </label>
-
-
-      <label
-        style={{
-          display: "grid",
-          gap: 6,
-          marginBottom: 12,
-          fontSize: 12,
-          color: "#334155",
-        }}
-      >
-        <span style={{ fontWeight: 700 }}>Choose theme</span>
-        <select
-          value={selectedThemeKey}
-          onChange={(e) => setSelectedThemeKey(e.target.value)}
-          style={{
-            width: "100%",
-            height: 36,
-            borderRadius: 8,
-            border: "1px solid #e2e8f0",
-            padding: "0 10px",
-            background: "#fff",
-            color: "#0f172a",
-            minWidth: 200,
-          }}
-          title="Choose page theme"
-        >
-          {themeKeys.map((k) => {
-            const t = pageThemes[k];
-            return (
-              <option key={k} value={k}>
-                {k} — {t?.id || "untitled"}
-              </option>
-            );
-          })}
-        </select>
-      </label>
-
-      <div style={{ fontSize: 12, color: "#334155", display: "grid", gap: 12 }}>
-        <label
-          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
-        >
-          <input
-            type="checkbox"
-            checked={apply.page_bg}
-            onChange={(e) => setApply((s) => ({ ...s, page_bg: e.target.checked }))}
-          />
-          <span style={{ fontWeight: 700, minWidth: 140 }}>Apply page_bg</span>
-          <span
+          <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "4px 8px",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
-              background: "#fff",
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 0.18,
+              color: "#000000ff",
+              fontWeight: 700,
+              marginBottom: 6,
             }}
           >
-            <span
+            Page background
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              fontSize: 12,
+              color: "#cbd5f5",
+              position: "relative",
+            }}
+          >
+            <input
+              id="bg-file"
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const dataUrl = reader.result;
+                  if (wmEnabled) {
+                    const wmDataUrl = createWatermarkedBackgroundSVG({
+                      imageUrl: dataUrl,
+                      text: wmText || "TBM+",
+                      opacity: wmOpacity,
+                      gap: wmGap,
+                      size: wmSize,
+                      angle: wmAngle,
+                    });
+                    onApplyBackgroundUrl?.(wmDataUrl);
+                  } else {
+                    onApplyBackgroundUrl?.(dataUrl);
+                  }
+                };
+                reader.readAsDataURL(file);
+                e.target.value = "";
+              }}
               style={{
-                width: 14,
-                height: 14,
-                borderRadius: 4,
-                border: "1px solid #e2e8f0",
+                position: "absolute",
+                width: 1,
+                height: 1,
+                padding: 0,
+                margin: -1,
+                overflow: "hidden",
+                clip: "rect(0,0,0,0)",
+                whiteSpace: "nowrap",
+                border: 0,
+              }}
+              title="Select background image"
+            />
+
+            {/* Button + Info icon row */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => document.getElementById("bg-file")?.click()}
+                style={{
+                  height: 38,
+                  borderRadius: 10,
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  padding: "6px 12px",
+                  background:
+                    "linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,64,175,0.85))",
+                  color: "#e5e7eb",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  textAlign: "left",
+                  boxShadow: "0 10px 25px rgba(30,64,175,0.45)",
+                  transition:
+                    "transform 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out",
+                }}
+                aria-label="Choose page background"
+                onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+                onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              >
+                <span>Choose Background (all pages)</span>
+
+                {/* Info icon with hover tooltip */}
+                <span
+                  onMouseEnter={() => setShowBgInfo(true)}
+                  onMouseLeave={() => setShowBgInfo(false)}
+                  style={{
+                    position: "relative",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 24,
+                    height: 24,
+                    borderRadius: "999px",
+                    border: "1px solid rgba(191,219,254,0.9)",
+                    background: "radial-gradient(circle,#eff6ff,#dbeafe)",
+                    color: "#1d4ed8",
+                    flexShrink: 0,
+                    fontSize: 13,
+                    fontWeight: 700,
+                  }}
+                  aria-label="Background info"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  i
+                  {showBgInfo && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "120%",
+                        right: 0,
+                        zIndex: 20,
+                        width: 260,
+                        padding: 10,
+                        borderRadius: 10,
+                        background:
+                          "radial-gradient(circle at top,#020617,#020617 80%)",
+                        color: "#e5e7eb",
+                        boxShadow: "0 18px 40px rgba(15,23,42,0.75)",
+                        fontSize: 12,
+                        opacity: showBgInfo ? 1 : 0,
+                        transform: showBgInfo
+                          ? "translateY(0)"
+                          : "translateY(4px)",
+                        transition:
+                          "opacity 120ms ease-out, transform 120ms ease-out",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          marginBottom: 4,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 18,
+                            height: 18,
+                            borderRadius: "999px",
+                            background: "#1d4ed8",
+                            fontSize: 11,
+                          }}
+                        >
+                          i
+                        </span>
+                        Choose Background (all pages)
+                      </div>
+
+                      <div style={{ color: "#cbd5f5", lineHeight: 1.5 }}>
+                        Tip: 2480×3508 (A4 @ 300 DPI) best rahega. SVG/data URL bhi
+                        chalega. Agar “Add watermark” on hai, to upload hote hi
+                        diagonal repeated text embed ho jayega.
+                      </div>
+                    </div>
+                  )}
+                </span>
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => onApplyBackgroundUrl?.("")}
+                style={{
+                  height: 32,
+                  borderRadius: 999,
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  padding: "0 12px",
+                  background: "rgba(15,23,42,0.85)",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: 12,
+                  color: "#ffffffff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition:
+                    "transform 120ms ease-out, box-shadow 120ms ease-out, background 120ms ease-out",
+                }}
+                title="Remove background"
+                onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+                onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              >
+                🧹 Remove background
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ========== COVER SECTION ========== */}
+        <div
+          style={{
+            border: "1px solid rgba(148,163,184,0.45)",
+            borderRadius: 14,
+            padding: 10,
+            marginBottom: 12,
+            background:
+              "radial-gradient(circle at top right, rgba(96,165,250,0.18), rgba(15,23,42,0.9))",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 0.18,
+              color: "#a5b4fc",
+              fontWeight: 700,
+              marginBottom: 6,
+            }}
+          >
+            Cover image
+          </div>
+
+          <label
+            style={{
+              display: "grid",
+              gap: 6,
+              fontSize: 12,
+              color: "#cbd5f5",
+            }}
+          >
+            <span>Upload a cover (2480 × 3508)</span>
+
+            <input
+              id="cover-file"
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && onPickImage) onPickImage(file);
+              }}
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                padding: 0,
+                margin: -1,
+                overflow: "hidden",
+                clip: "rect(0, 0, 0, 0)",
+                whiteSpace: "nowrap",
+                border: 0,
+              }}
+              title="Select an image to show on top"
+            />
+
+            <button
+              type="button"
+              onClick={() => document.getElementById("cover-file")?.click()}
+              style={{
+                height: 36,
+                borderRadius: 10,
+                border: "1px solid rgba(148,163,184,0.6)",
+                padding: "6px 12px",
                 background:
-                  custom.page_bg || effectiveTheme?.page_bg || "#ffffff",
+                  "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,64,175,0.9))",
+                color: "#e5e7eb",
+                cursor: "pointer",
+                fontWeight: 600,
+                width: "100%",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                transition:
+                  "transform 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out",
               }}
-            />
-            <input
-              type="color"
-              value={custom.page_bg || effectiveTheme?.page_bg || "#ffffff"}
-              onChange={(e) =>
-                setCustom((c) => ({ ...c, page_bg: e.target.value }))
+              aria-label="Choose cover page"
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            >
+              📂 Choose Cover page
+            </button>
+
+            <button
+              type="button"
+              onClick={onSaveCover}
+              disabled={!coverFile || savingCover}
+              style={{
+                height: 36,
+                borderRadius: 999,
+                border: savingCover
+                  ? "1px solid #93c5fd"
+                  : "1px solid rgba(96,165,250,0.9)",
+                padding: "6px 12px",
+                background: savingCover
+                  ? "linear-gradient(90deg,#1f2937,#111827)"
+                  : "linear-gradient(135deg,#3b82f6,#22d3ee)",
+                color: "#f9fafb",
+                cursor: !coverFile || savingCover ? "not-allowed" : "pointer",
+                fontWeight: 700,
+                width: "100%",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                boxShadow: savingCover
+                  ? "0 0 0 rgba(0,0,0,0)"
+                  : "0 14px 30px rgba(37,99,235,0.4)",
+                transition:
+                  "transform 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out",
+              }}
+              aria-label="Save cover page"
+              title={
+                coverFile
+                  ? "Upload this image as cover_page"
+                  : "Choose an image first"
               }
-              style={{
-                width: 32,
-                height: 20,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-              title="Pick page/body background"
-            />
-            <button
-              onClick={() => setCustom((c) => ({ ...c, page_bg: "" }))}
-              style={{
-                border: "1px solid #e2e8f0",
-                background: "#fff",
-                borderRadius: 6,
-                padding: "2px 6px",
-                cursor: "pointer",
-              }}
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
             >
-              Reset
+              {savingCover ? (
+                <>
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: "999px",
+                      border: "2px solid rgba(191,219,254,0.6)",
+                      borderTopColor: "#f9fafb",
+                      animation: "spin 0.7s linear infinite",
+                    }}
+                  />
+                  Saving…
+                </>
+              ) : (
+                <>🚀 Save Cover</>
+              )}
             </button>
-          </span>
-          <span style={{ color: "#64748b" }}>
-            Body background is always same as page background.
-          </span>
-        </label>
+          </label>
+        </div>
 
-        <label
-          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+        {/* ========== THEME DROPDOWN ========== */}
+        <div
+          style={{
+            border: "1px solid rgba(148,163,184,0.45)",
+            borderRadius: 14,
+            padding: 10,
+            marginBottom: 12,
+            background:
+              "radial-gradient(circle at bottom left, rgba(59,130,246,0.18), rgba(15,23,42,0.9))",
+          }}
         >
-          <input
-            type="checkbox"
-            checked={apply.text}
-            onChange={(e) => setApply((s) => ({ ...s, text: e.target.checked }))}
-          />
-          <span style={{ fontWeight: 700, minWidth: 140 }}>Apply text</span>
-          <span
+          <label
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "4px 8px",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
-              background: "#fff",
+              display: "grid",
+              gap: 6,
+              fontSize: 12,
+              color: "#cbd5f5",
             }}
           >
-            <span
+            <span style={{ fontWeight: 700, color: "#e5e7eb" }}>Choose theme</span>
+            <select
+              value={selectedThemeKey}
+              onChange={(e) => setSelectedThemeKey(e.target.value)}
               style={{
-                width: 14,
-                height: 14,
-                borderRadius: 4,
-                border: "1px solid #e2e8f0",
-                background: custom.text || effectiveTheme?.text || "#0f172a",
-              }}
-            />
-            <input
-              type="color"
-              value={custom.text || effectiveTheme?.text || "#0f172a"}
-              onChange={(e) => setCustom((c) => ({ ...c, text: e.target.value }))}
-              style={{
-                width: 32,
-                height: 20,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-              title="Pick text color"
-            />
-            <button
-              onClick={() => setCustom((c) => ({ ...c, text: "" }))}
-              style={{
-                border: "1px solid #e2e8f0",
-                background: "#fff",
-                borderRadius: 6,
-                padding: "2px 6px",
-                cursor: "pointer",
-              }}
-            >
-              Reset
-            </button>
-          </span>
-        </label>
-
-        <label
-          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
-        >
-          <input
-            type="checkbox"
-            checked={apply.accent}
-            onChange={(e) => setApply((s) => ({ ...s, accent: e.target.checked }))}
-          />
-          <span style={{ fontWeight: 700, minWidth: 140 }}>Apply accent</span>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "4px 8px",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
-              background: "#fff",
-            }}
-          >
-            <span
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: 4,
-                border: "1px solid #e2e8f0",
-                background: custom.accent || effectiveTheme?.accent || "#2563eb",
-              }}
-            />
-            <input
-              type="color"
-              value={custom.accent || effectiveTheme?.accent || "#2563eb"}
-              onChange={(e) =>
-                setCustom((c) => ({ ...c, accent: e.target.value }))
-              }
-              style={{
-                width: 32,
-                height: 20,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-              title="Pick accent color"
-            />
-            <button
-              onClick={() => setCustom((c) => ({ ...c, accent: "" }))}
-              style={{
-                border: "1px solid #e2e8f0",
-                background: "#fff",
-                borderRadius: 6,
-                padding: "2px 6px",
-                cursor: "pointer",
-              }}
-            >
-              Reset
-            </button>
-          </span>
-        </label>
-
-        <label
-          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
-        >
-          <input
-            type="checkbox"
-            checked={apply.accent2}
-            onChange={(e) =>
-              setApply((s) => ({ ...s, accent2: e.target.checked }))
-            }
-          />
-          <span style={{ fontWeight: 700, minWidth: 140 }}>Apply accent2</span>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "4px 8px",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
-              background: "#fff",
-            }}
-          >
-            <span
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: 4,
-                border: "1px solid #e2e8f0",
+                width: "100%",
+                height: 36,
+                borderRadius: 10,
+                border: "1px solid rgba(148,163,184,0.7)",
+                padding: "0 10px",
                 background:
-                  custom.accent2 || effectiveTheme?.accent2 || "#60a5fa",
+                  "linear-gradient(135deg, rgba(15,23,42,1), rgba(30,64,175,0.9))",
+                color: "#f9fafb",
+                fontSize: 13,
+                outline: "none",
               }}
-            />
+              title="Choose page theme"
+            >
+              {themeKeys.map((k) => {
+                const t = pageThemes[k];
+                return (
+                  <option
+                    key={k}
+                    value={k}
+                    style={{ backgroundColor: "#020617", color: "#e5e7eb" }}
+                  >
+                    {k} — {t?.id || "untitled"}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+        </div>
+
+        {/* ========== COLORS SECTION ========== */}
+        <div
+          style={{
+            border: "1px solid rgba(148,163,184,0.45)",
+            borderRadius: 14,
+            padding: 10,
+            marginBottom: 12,
+            background:
+              "radial-gradient(circle at top, rgba(37,99,235,0.16), rgba(15,23,42,0.96))",
+            fontSize: 12,
+            color: "#e5e7eb",
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 0.18,
+              color: "#ffffffff",
+              fontWeight: 700,
+              marginBottom: 4,
+            }}
+          >
+            Base colors
+          </div>
+
+          {/* PAGE BG */}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
             <input
-              type="color"
-              value={custom.accent2 || effectiveTheme?.accent2 || "#60a5fa"}
+              type="checkbox"
+              checked={apply.page_bg}
               onChange={(e) =>
-                setCustom((c) => ({ ...c, accent2: e.target.value }))
+                setApply((s) => ({ ...s, page_bg: e.target.checked }))
               }
-              style={{
-                width: 32,
-                height: 20,
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-              title="Pick accent2 color"
             />
-            <button
-              onClick={() => setCustom((c) => ({ ...c, accent2: "" }))}
+            <span style={{ fontWeight: 700, minWidth: 120 }}>Apply page_bg</span>
+            <span
               style={{
-                border: "1px solid #e2e8f0",
-                background: "#fff",
-                borderRadius: 6,
-                padding: "2px 6px",
-                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 8px",
+                border: "1px solid rgba(148,163,184,0.6)",
+                borderRadius: 999,
+                background: "rgba(15,23,42,0.95)",
               }}
             >
-              Reset
-            </button>
-          </span>
-        </label>
+              <span
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 999,
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  background:
+                    custom.page_bg || effectiveTheme?.page_bg || "#ffffff",
+                }}
+              />
+              <input
+                type="color"
+                value={custom.page_bg || effectiveTheme?.page_bg || "#ffffff"}
+                onChange={(e) =>
+                  setCustom((c) => ({ ...c, page_bg: e.target.value }))
+                }
+                style={{
+                  width: 32,
+                  height: 20,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+                title="Pick page/body background"
+              />
+              <button
+                onClick={() => setCustom((c) => ({ ...c, page_bg: "" }))}
+                style={{
+                  border: "1px solid rgba(148,163,184,0.7)",
+                  background: "rgba(15,23,42,0.8)",
+                  borderRadius: 999,
+                  padding: "2px 8px",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  color: "#e5e7eb",
+                }}
+              >
+                Reset
+              </button>
+            </span>
+            <span style={{ color: "#ffffffff" }}>
+              Body background is always same as page background.
+            </span>
+          </label>
 
-        <div style={{ marginTop: 6, paddingTop: 8, borderTop: "1px solid #e2e8f0" }}>
-          <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
+          {/* TEXT COLOR */}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={apply.text}
+              onChange={(e) =>
+                setApply((s) => ({ ...s, text: e.target.checked }))
+              }
+            />
+            <span style={{ fontWeight: 700, minWidth: 120 }}>Apply text</span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 8px",
+                border: "1px solid rgba(148,163,184,0.6)",
+                borderRadius: 999,
+                background: "rgba(15,23,42,0.95)",
+              }}
+            >
+              <span
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 999,
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  background: custom.text || effectiveTheme?.text || "#0f172a",
+                }}
+              />
+              <input
+                type="color"
+                value={custom.text || effectiveTheme?.text || "#0f172a"}
+                onChange={(e) =>
+                  setCustom((c) => ({ ...c, text: e.target.value }))
+                }
+                style={{
+                  width: 32,
+                  height: 20,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+                title="Pick text color"
+              />
+              <button
+                onClick={() => setCustom((c) => ({ ...c, text: "" }))}
+                style={{
+                  border: "1px solid rgba(148,163,184,0.7)",
+                  background: "rgba(15,23,42,0.8)",
+                  borderRadius: 999,
+                  padding: "2px 8px",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  color: "#e5e7eb",
+                }}
+              >
+                Reset
+              </button>
+            </span>
+          </label>
+
+          {/* ACCENT 1 */}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={apply.accent}
+              onChange={(e) =>
+                setApply((s) => ({ ...s, accent: e.target.checked }))
+              }
+            />
+            <span style={{ fontWeight: 700, minWidth: 120 }}>Apply accent</span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 8px",
+                border: "1px solid rgba(148,163,184,0.6)",
+                borderRadius: 999,
+                background: "rgba(15,23,42,0.95)",
+              }}
+            >
+              <span
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 999,
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  background:
+                    custom.accent || effectiveTheme?.accent || "#2563eb",
+                }}
+              />
+              <input
+                type="color"
+                value={custom.accent || effectiveTheme?.accent || "#2563eb"}
+                onChange={(e) =>
+                  setCustom((c) => ({ ...c, accent: e.target.value }))
+                }
+                style={{
+                  width: 32,
+                  height: 20,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+                title="Pick accent color"
+              />
+              <button
+                onClick={() => setCustom((c) => ({ ...c, accent: "" }))}
+                style={{
+                  border: "1px solid rgba(148,163,184,0.7)",
+                  background: "rgba(15,23,42,0.8)",
+                  borderRadius: 999,
+                  padding: "2px 8px",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  color: "#e5e7eb",
+                }}
+              >
+                Reset
+              </button>
+            </span>
+          </label>
+
+          {/* ACCENT 2 */}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={apply.accent2}
+              onChange={(e) =>
+                setApply((s) => ({ ...s, accent2: e.target.checked }))
+              }
+            />
+            <span style={{ fontWeight: 700, minWidth: 120 }}>Apply accent2</span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 8px",
+                border: "1px solid rgba(148,163,184,0.6)",
+                borderRadius: 999,
+                background: "rgba(15,23,42,0.95)",
+              }}
+            >
+              <span
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 999,
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  background:
+                    custom.accent2 || effectiveTheme?.accent2 || "#60a5fa",
+                }}
+              />
+              <input
+                type="color"
+                value={custom.accent2 || effectiveTheme?.accent2 || "#60a5fa"}
+                onChange={(e) =>
+                  setCustom((c) => ({ ...c, accent2: e.target.value }))
+                }
+                style={{
+                  width: 32,
+                  height: 20,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+                title="Pick accent2 color"
+              />
+              <button
+                onClick={() => setCustom((c) => ({ ...c, accent2: "" }))}
+                style={{
+                  border: "1px solid rgba(148,163,184,0.7)",
+                  background: "rgba(15,23,42,0.8)",
+                  borderRadius: 999,
+                  padding: "2px 8px",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  color: "#e5e7eb",
+                }}
+              >
+                Reset
+              </button>
+            </span>
+          </label>
+        </div>
+
+        {/* ========== SVG COLOR SECTION ========== */}
+        <div
+          style={{
+            border: "1px solid rgba(148,163,184,0.45)",
+            borderRadius: 14,
+            padding: 10,
+            marginBottom: 10,
+            background:
+              "radial-gradient(circle at bottom right, rgba(15,23,42,0.96), rgba(30,64,175,0.8))",
+            fontSize: 12,
+            color: "#e5e7eb",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              color: "#e5e7eb",
+              marginBottom: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 999,
+                background: "rgba(59,130,246,0.2)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 10,
+              }}
+            >
+              SVG
+            </span>
             SVG colors
           </div>
           {Object.keys(svgColorMap).length === 0 ? (
-            <div style={{ color: "#64748b", fontSize: 12 }}>
+            <div style={{ color: "#9ca3af", fontSize: 12 }}>
               No SVG colors detected in this theme.
             </div>
           ) : (
@@ -1422,7 +1768,8 @@ function ThemePanel({
                     style={{
                       minWidth: 120,
                       fontFamily: "monospace",
-                      fontSize: 12,
+                      fontSize: 11,
+                      color: "#cbd5f5",
                     }}
                   >
                     {orig.toLowerCase()}
@@ -1433,17 +1780,17 @@ function ThemePanel({
                       alignItems: "center",
                       gap: 8,
                       padding: "4px 8px",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      background: "#fff",
+                      border: "1px solid rgba(148,163,184,0.6)",
+                      borderRadius: 999,
+                      background: "rgba(15,23,42,0.95)",
                     }}
                   >
                     <span
                       style={{
-                        width: 14,
-                        height: 14,
-                        borderRadius: 4,
-                        border: "1px solid #e2e8f0",
+                        width: 16,
+                        height: 16,
+                        borderRadius: 999,
+                        border: "1px solid rgba(148,163,184,0.6)",
                         background: current,
                       }}
                     />
@@ -1468,11 +1815,13 @@ function ThemePanel({
                         setSvgColorMap((m) => ({ ...m, [orig]: orig }))
                       }
                       style={{
-                        border: "1px solid #e2e8f0",
-                        background: "#fff",
-                        borderRadius: 6,
-                        padding: "2px 6px",
+                        border: "1px solid rgba(148,163,184,0.7)",
+                        background: "rgba(15,23,42,0.8)",
+                        borderRadius: 999,
+                        padding: "2px 8px",
                         cursor: "pointer",
+                        fontSize: 11,
+                        color: "#e5e7eb",
                       }}
                       title="Reset to original"
                     >
@@ -1483,14 +1832,28 @@ function ThemePanel({
               ))}
             </div>
           )}
-        </div>
 
-        <div style={{ marginTop: 6, color: "#64748b" }}>
-          Toggle which theme parts apply. Unchecked values fall back to safe
-          defaults.
+          <div
+            style={{
+              marginTop: 8,
+              color: "#9ca3af",
+              fontSize: 11,
+            }}
+          >
+            Toggle which theme parts apply. Unchecked values fall back to safe
+            defaults.
+          </div>
         </div>
       </div>
+
+      {/* Tiny inline keyframes for loader spin */}
+      <style>{`
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  `}</style>
     </aside>
+
   );
 }
 
@@ -1531,6 +1894,15 @@ export default function BookDetailsPage() {
   function freezeForExport() { document.body.classList.add("tbm-printing", "tbm-exporting"); try { window.scrollTo({ top: 0, behavior: "instant" }); } catch { } }
   function unfreezeAfterExport() { document.body.classList.remove("tbm-printing", "tbm-exporting"); }
   async function waitForFonts() { try { if (document?.fonts?.ready) await document.fonts.ready; } catch { } }
+  const [tocReady, setTocReady] = React.useState(false);
+
+  React.useEffect(() => {
+    setTocReady(true);
+  }, []);
+  const [toolbarReady, setToolbarReady] = React.useState(false);
+  React.useEffect(() => {
+    setToolbarReady(true);
+  }, []);
 
 
   let _libOnce;
@@ -2019,7 +2391,21 @@ export default function BookDetailsPage() {
     </div>
   );
 
-  const containerStyle = { minHeight: "100vh", color: "#0f172a", background: "#f8fafc", transition: "all 0.3s ease" };
+  const containerStyle = {
+    // layout
+    minHeight: "100vh",
+    width: "100%",
+    boxSizing: "border-box",
+
+    // sirf bottom padding (no left/right/top)
+    padding: "0 0 1px 0",
+
+    // outer shell
+    borderRadius: 18,
+
+  };
+
+
 
   function pickId(v) {
     if (v == null) return null;
@@ -2336,36 +2722,108 @@ export default function BookDetailsPage() {
 
   return (
     <div style={containerStyle}>
-      <div className="w-full h-full">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+      <div
+        className="w-full h-full"
+        style={{
+          borderRadius: 16,
+
+          padding: 16,
+          color: "#e5e7eb",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 24,
+            opacity: toolbarReady ? 1 : 0,
+            transform: toolbarReady ? "translateY(0)" : "translateY(-10px)",
+            transition: "opacity 220ms ease-out, transform 220ms ease-out",
+          }}
+        >
+          {/* LEFT: Title */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div>
-              <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>{book.title}</h1>
+              <h1
+                style={{
+                  fontSize: 28,
+                  fontWeight: 800,
+                  margin: 0,
+                  letterSpacing: 0.3,
+                  color: "#000000ff",
+                }}
+              >
+                {book.title}
+              </h1>
+
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* RIGHT: Actions pill */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: 4,
+              borderRadius: 999,
+
+              border: "1px solid rgba(148,163,184,0.5)",
+            }}
+          >
+            {/* Download PDF */}
             <button
               onClick={handleExportPDFDirect}
               disabled={exporting}
               className="no-print"
               style={{
-                display: "inline-flex", alignItems: "center", gap: 8, height: 36,
-                borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 12px",
-                background: "#fff", color: "#0f172a", cursor: exporting ? "not-allowed" : "pointer", fontWeight: 600
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                height: 36,
+                borderRadius: 999,
+                border: "1px solid rgba(56,189,248,0.8)",
+                padding: "0 14px",
+                background: exporting
+                  ? "linear-gradient(90deg,#1f2937,#111827)"
+                  : "linear-gradient(135deg,#0ea5e9,#6366f1)",
+                color: exporting ? "#9ca3af" : "#f9fafb",
+                cursor: exporting ? "not-allowed" : "pointer",
+                fontWeight: 700,
+                fontSize: 13,
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+                boxShadow: exporting
+                  ? "0 0 0 rgba(0,0,0,0)"
+                  : "0 12px 30px rgba(59,130,246,0.4)",
+                transition:
+                  "transform 120ms ease-out, box-shadow 120ms ease-out, background 140ms ease-out",
               }}
               title={exporting ? exportNote || "Exporting…" : "Download as PDF"}
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
             >
               {exporting ? (
-                <span style={{
-                  width: 16, height: 16, border: "2px solid #94a3b8",
-                  borderTopColor: "#0f172a", borderRadius: "50%", display: "inline-block",
-                  animation: "tbmSpin 0.8s linear infinite"
-                }} />
-              ) : "⬇️"}
-              <span>{exporting ? (exportNote || "Exporting…") : "Download PDF"}</span>
+                <span
+                  style={{
+                    width: 16,
+                    height: 16,
+                    border: "2px solid #94a3b8",
+                    borderTopColor: "#f9fafb",
+                    borderRadius: "50%",
+                    display: "inline-block",
+                    animation: "tbmSpin 0.8s linear infinite",
+                  }}
+                />
+              ) : (
+                "⬇️"
+              )}
+              <span>{exporting ? exportNote || "Exporting…" : "Download PDF"}</span>
             </button>
 
+            {/* Theme toggle */}
             <button
               onClick={() => {
                 setShowThemePanel((s) => !s);
@@ -2374,15 +2832,36 @@ export default function BookDetailsPage() {
               }}
               title="Theme"
               style={{
-                display: "inline-flex", alignItems: "center", gap: 8, height: 36,
-                borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 12px",
-                background: "#fff", color: "#0f172a", cursor: "pointer", fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                height: 34,
+                borderRadius: 999,
+                border: "1px solid rgba(129,140,248,0.9)",
+                padding: "0 12px",
+                background:
+                  "linear-gradient(135deg, rgba(30,64,175,0.95), rgba(56,189,248,0.9))",
+                color: "#f9fafb",
+                cursor: "pointer",
+                fontWeight: 600,
+                fontSize: 12,
+                boxShadow: "0 8px 22px rgba(37,99,235,0.5)",
+                transition:
+                  "transform 120ms ease-out, box-shadow 120ms ease-out, background 140ms ease-out",
               }}
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
             >
-              <span role="img" aria-label="palette">🎨</span>
-              <span>{selectedThemeKey} — {effectiveTheme?.id || "theme"}</span>
+              <span role="img" aria-label="palette">
+                🎨
+              </span>
+              <span style={{ whiteSpace: "nowrap" }}>
+                {selectedThemeKey} — {effectiveTheme?.id || "theme"}
+              </span>
             </button>
 
+            {/* Editor toggle */}
             <button
               onClick={() => {
                 setShowEditorPanel((s) => !s);
@@ -2391,30 +2870,67 @@ export default function BookDetailsPage() {
               }}
               title="Edit"
               style={{
-                display: "inline-flex", alignItems: "center", gap: 8, height: 36,
-                borderRadius: 8, border: "1px solid #e2e8f0", padding: "0 12px",
-                background: "#fff", color: "#0f172a", cursor: "pointer", fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                height: 34,
+                borderRadius: 999,
+                border: "1px solid rgba(148,163,184,0.8)",
+                padding: "0 12px",
+                background:
+                  "linear-gradient(135deg, rgba(15,23,42,0.95), rgba(55,65,81,0.95))",
+                color: "#e5e7eb",
+                cursor: "pointer",
+                fontWeight: 600,
+                fontSize: 12,
+                boxShadow: "0 6px 18px rgba(15,23,42,0.8)",
+                transition:
+                  "transform 120ms ease-out, box-shadow 120ms ease-out, background 140ms ease-out",
               }}
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
             >
-              <span role="img" aria-label="edit">✏️</span>
+              <span role="img" aria-label="edit">
+                ✏️
+              </span>
               <span>{showEditorPanel ? "Close Edit" : "Edit"}</span>
             </button>
 
+            {/* Editor-only buttons */}
             {showEditorPanel ? (
               <>
                 <button
                   onClick={() => {
                     if (selectedPage == null) return;
                     setBgDisabledPages((prev) => {
-                      const s = new Set(prev); s.add(selectedPage - 1); return s;
+                      const s = new Set(prev);
+                      s.add(selectedPage - 1);
+                      return s;
                     });
                   }}
                   disabled={selectedPage == null}
                   style={{
-                    height: 32, padding: "0 12px", border: "1px solid #e5e7eb", borderRadius: 8,
-                    background: "#fff", fontWeight: 600, cursor: selectedPage != null ? "pointer" : "not-allowed",
+                    height: 32,
+                    padding: "0 12px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(148,163,184,0.8)",
+                    background: "rgba(15,23,42,0.9)",
+                    fontWeight: 600,
+                    fontSize: 11,
+                    color:
+                      selectedPage == null ? "#6b7280" : "#e5e7eb",
+                    cursor: selectedPage != null ? "pointer" : "not-allowed",
+                    transition:
+                      "transform 120ms ease-out, box-shadow 120ms ease-out, background 140ms ease-out",
                   }}
                   title="Remove background image on this page only"
+                  onMouseDown={(e) =>
+                    selectedPage != null &&
+                    (e.currentTarget.style.transform = "scale(0.97)")
+                  }
+                  onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
                 >
                   Remove BG (this page)
                 </button>
@@ -2422,10 +2938,24 @@ export default function BookDetailsPage() {
                 <button
                   onClick={handleSaveEditedPages}
                   style={{
-                    height: 32, padding: "0 12px", border: "1px solid #10b981", borderRadius: 8,
-                    background: "#10b981", color: "#fff", fontWeight: 700, cursor: "pointer",
+                    height: 32,
+                    padding: "0 12px",
+                    borderRadius: 999,
+                    border: "1px solid #10b981",
+                    background:
+                      "linear-gradient(135deg,#059669,#22c55e)",
+                    color: "#f9fafb",
+                    fontWeight: 700,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    boxShadow: "0 8px 22px rgba(22,163,74,0.6)",
+                    transition:
+                      "transform 120ms ease-out, box-shadow 120ms ease-out, background 140ms ease-out",
                   }}
                   title="Save edited pages"
+                  onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+                  onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
                 >
                   Save
                 </button>
@@ -2434,15 +2964,33 @@ export default function BookDetailsPage() {
                   onClick={() => {
                     if (selectedPage == null) return;
                     setBgDisabledPages((prev) => {
-                      const s = new Set(prev); s.delete(selectedPage - 1); return s;
+                      const s = new Set(prev);
+                      s.delete(selectedPage - 1);
+                      return s;
                     });
                   }}
                   disabled={selectedPage == null}
                   style={{
-                    height: 32, padding: "0 12px", border: "1px solid #e5e7eb", borderRadius: 8,
-                    background: "#fff", fontWeight: 600, cursor: selectedPage != null ? "pointer" : "not-allowed",
+                    height: 32,
+                    padding: "0 12px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(148,163,184,0.8)",
+                    background: "rgba(15,23,42,0.9)",
+                    fontWeight: 600,
+                    fontSize: 11,
+                    color:
+                      selectedPage == null ? "#6b7280" : "#e5e7eb",
+                    cursor: selectedPage != null ? "pointer" : "not-allowed",
+                    transition:
+                      "transform 120ms ease-out, box-shadow 120ms ease-out, background 140ms ease-out",
                   }}
                   title="Restore background image on this page"
+                  onMouseDown={(e) =>
+                    selectedPage != null &&
+                    (e.currentTarget.style.transform = "scale(0.97)")
+                  }
+                  onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
                 >
                   Restore BG (this page)
                 </button>
@@ -2450,6 +2998,7 @@ export default function BookDetailsPage() {
             ) : null}
           </div>
         </div>
+
 
         <div style={{
           display: "grid",
@@ -2496,139 +3045,251 @@ export default function BookDetailsPage() {
                   alignSelf: "stretch",
 
                   maxHeight: "calc(100vh - 140px)",
-                  overflowY: "auto",
-                  overflowX: "hidden",
+                  background:
+                    "linear-gradient(135deg, rgba(56,189,248,0.18), rgba(129,140,248,0.22))",
+                  // outer shell + animation
+                  padding: 1,
+                  borderRadius: 18,
 
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 12,
-                  background: "#fff",
-                  padding: 12,
+                  opacity: tocReady ? 1 : 0,
+                  transform: tocReady ? "translateX(0)" : "translateX(-24px)",
+                  transition: "opacity 220ms ease-out, transform 220ms ease-out",
+
+                  overflow: "hidden",
                 }}
               >
-                <div style={{ display: "grid", gap: 8 }}>
-                  {(() => {
-                    const pageIndexLocal = (pages || []).map((p, i) => ({
-                      page: i + 1,
-                      ...readMeta(p),
-                    }));
+                {/* inner dark card */}
+                <div
+                  style={{
+                    height: "100%",
+                    borderRadius: 16,
 
-                    const map = new Map();
-                    pageIndexLocal.forEach(({ page, unit, title }) => {
-                      const uKey = unit || "Untitled Unit";
-                      if (!map.has(uKey)) map.set(uKey, new Map());
-                      const L = map.get(uKey);
-                      const lKey = title || "Page";
-                      if (!L.has(lKey)) L.set(lKey, page);
-                    });
+                    border: "3px solid rgba(148,163,184,0.2)",
+                    padding: 12,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    color: "#e5e7eb",
+                  }}
+                >
+                  {/* header */}
+                  <div
+                    style={{
+                      marginBottom: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        fontSize: 13,
+                        letterSpacing: 0.25,
+                        textTransform: "uppercase",
+                        color: "#000000ff",
+                      }}
+                    >
+                      Contents
+                    </div>
+                    <div style={{ fontSize: 11, color: "#000000ff" }}>
+                      Jump quickly to any unit or lesson.
+                    </div>
+                  </div>
 
-                    const grouped = Array.from(map.entries()).map(([unitTitle, lessonsMap]) => ({
-                      unit: unitTitle,
-                      lessons: Array.from(lessonsMap.entries()).map(([title, firstPage]) => ({
-                        title,
-                        firstPage,
-                      })),
-                    }));
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {(() => {
+                      const pageIndexLocal = (pages || []).map((p, i) => ({
+                        page: i + 1,
+                        ...readMeta(p),
+                      }));
 
-                    const isGenericTitle = (t) => {
-                      const s = String(t || "").trim();
-                      if (!s) return true;
-                      const low = s.toLowerCase();
-                      if (low === "page" || low === "pages") return true;
-                      if (/^page\s*\d*$/i.test(s)) return true;
-                      if (low === "contents" || low === "table of contents") return true;
-                      return false;
-                    };
+                      const map = new Map();
+                      pageIndexLocal.forEach(({ page, unit, title }) => {
+                        const uKey = unit || "Untitled Unit";
+                        if (!map.has(uKey)) map.set(uKey, new Map());
+                        const L = map.get(uKey);
+                        const lKey = title || "Page";
+                        if (!L.has(lKey)) L.set(lKey, page);
+                      });
 
-                    return grouped
-                      .filter((u) => String(u.unit || "").trim().toLowerCase() !== "contents")
-                      .map((u) => {
-                        const seen = new Set();
-                        const filtered = u.lessons
-                          .slice()
-                          .sort((a, b) => a.firstPage - b.firstPage)
-                          .filter((l) => l.firstPage > 2)
-                          .filter((l) => !isGenericTitle(l.title))
-                          .filter((l) => {
-                            const key = String(l.title || "").trim().toLowerCase();
-                            if (!key) return false;
-                            if (seen.has(key)) return false;
-                            seen.add(key);
-                            return true;
-                          });
+                      const grouped = Array.from(map.entries()).map(
+                        ([unitTitle, lessonsMap]) => ({
+                          unit: unitTitle,
+                          lessons: Array.from(lessonsMap.entries()).map(
+                            ([title, firstPage]) => ({
+                              title,
+                              firstPage,
+                            })
+                          ),
+                        })
+                      );
 
-                        if (!filtered.length) return null;
+                      const isGenericTitle = (t) => {
+                        const s = String(t || "").trim();
+                        if (!s) return true;
+                        const low = s.toLowerCase();
+                        if (low === "page" || low === "pages") return true;
+                        if (/^page\s*\d*$/i.test(s)) return true;
+                        if (low === "contents" || low === "table of contents") return true;
+                        return false;
+                      };
 
-                        return (
-                          <div key={u.unit}>
+                      return grouped
+                        .filter(
+                          (u) =>
+                            String(u.unit || "").trim().toLowerCase() !== "contents"
+                        )
+                        .map((u) => {
+                          const seen = new Set();
+                          const filtered = u.lessons
+                            .slice()
+                            .sort((a, b) => a.firstPage - b.firstPage)
+                            .filter((l) => l.firstPage > 2)
+                            .filter((l) => !isGenericTitle(l.title))
+                            .filter((l) => {
+                              const key = String(l.title || "").trim().toLowerCase();
+                              if (!key) return false;
+                              if (seen.has(key)) return false;
+                              seen.add(key);
+                              return true;
+                            });
+
+                          if (!filtered.length) return null;
+
+                          return (
                             <div
+                              key={u.unit}
                               style={{
-                                fontWeight: 700,
-                                fontSize: 13,
-                                color: "#111827",
-                                marginBottom: 6,
+                                padding: 8,
+                                borderRadius: 12,
+                                background:
+                                  " #ffffffff",
+                                border: "1px solid rgba(148,163,184,0.4)",
                               }}
                             >
-                              {u.unit || "Unit"}
-                            </div>
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  fontSize: 12,
+                                  color: "#000000ff",
+                                  marginBottom: 6,
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 8,
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {u.unit || "Unit"}
+                                </span>
 
-                            <div style={{ display: "grid", gap: 4 }}>
-                              {filtered.map((l) => {
-                                const isActive = currentPage === l.firstPage;
+                              </div>
 
-                                const handleClick = (e) => {
-                                  e.preventDefault();
-                                  const targetId = `page-${l.firstPage}`;
-                                  setCurrentPage(l.firstPage);
-                                  const doScroll = () => {
-                                    const el = document.getElementById(targetId);
-                                    if (el) {
-                                      el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
-                                    }
+                              <div style={{ display: "grid", gap: 4 }}>
+                                {filtered.map((l) => {
+                                  const isActive = currentPage === l.firstPage;
+
+                                  const handleClick = (e) => {
+                                    e.preventDefault();
+                                    const targetId = `page-${l.firstPage}`;
+                                    setCurrentPage(l.firstPage);
+                                    const doScroll = () => {
+                                      const el = document.getElementById(targetId);
+                                      if (el) {
+                                        el.scrollIntoView({
+                                          behavior: "smooth",
+                                          block: "start",
+                                          inline: "nearest",
+                                        });
+                                      }
+                                    };
+                                    requestAnimationFrame(doScroll);
+                                    setTimeout(doScroll, 0);
                                   };
-                                  requestAnimationFrame(doScroll);
-                                  setTimeout(doScroll, 0);
-                                };
 
-                                return (
-                                  <button
-                                    type="button"
-                                    id={`toc-${l.firstPage}`}
-                                    key={u.unit + "::" + l.title}
-                                    onClick={handleClick}
-                                    title={l.title ? l.title : `Go to page ${l.firstPage}`}
-                                    style={{
-                                      textAlign: "left",
-                                      cursor: "pointer",
-                                      fontSize: 12,
-                                      border: `1px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#e5e7eb"}`,
-                                      borderLeft: `6px solid ${isActive ? (effectiveTheme?.accent || "#2563eb") : "#3333ff"}`,
-                                      borderRadius: 10,
-                                      padding: "10px 12px",
-                                      background: isActive ? "rgba(37,99,235,0.07)" : "#fff",
-                                      color: isActive ? "#0f172a" : "#334155",
-                                      boxShadow: isActive ? "0 2px 8px rgba(37,99,235,.15)" : "none",
-                                    }}
-                                  >
-                                    <div
+                                  return (
+                                    <button
+                                      type="button"
+                                      id={`toc-${l.firstPage}`}
+                                      key={u.unit + "::" + l.title}
+                                      onClick={handleClick}
+                                      title={
+                                        l.title ? l.title : `Go to page ${l.firstPage}`
+                                      }
                                       style={{
-                                        fontWeight: 700,
-                                        whiteSpace: "nowrap",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
+                                        textAlign: "left",
+                                        cursor: "pointer",
+                                        fontSize: 12,
+                                        border: `1px solid ${isActive
+                                          ? effectiveTheme?.accent || "#38bdf8"
+                                          : "rgba(0, 0, 0, 0.6)"
+                                          }`,
+                                        borderLeft: `6px solid ${isActive
+                                          ? effectiveTheme?.accent || "#38bdf8"
+                                          : "#4f46e5"
+                                          }`,
+                                        borderRadius: 10,
+                                        padding: "8px 10px",
+                                        background: isActive
+                                          ? "rgba(255, 255, 255, 0.15)"
+                                          : "rgba(0, 0, 0, 0)",
+                                        color: isActive ? "#000000ff" : "#050505ff",
+                                        boxShadow: isActive
+                                          ? "0 4px 12px rgba(56,189,248,.35)"
+                                          : "none",
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        gap: 8,
+                                        transition:
+                                          "transform 120ms ease-out, box-shadow 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out",
                                       }}
+                                      onMouseDown={(e) =>
+                                        (e.currentTarget.style.transform = "scale(0.98)")
+                                      }
+                                      onMouseUp={(e) =>
+                                        (e.currentTarget.style.transform = "scale(1)")
+                                      }
+                                      onMouseLeave={(e) =>
+                                        (e.currentTarget.style.transform = "scale(1)")
+                                      }
                                     >
-                                      {l.title}
-                                    </div>
-                                  </button>
-                                );
-                              })}
+                                      <div
+                                        style={{
+                                          fontWeight: 600,
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                        }}
+                                      >
+                                        {l.title}
+                                      </div>
+                                      <span
+                                        style={{
+                                          fontSize: 11,
+                                          color: isActive ? "#000000ff" : "#9ca3af",
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        p. {l.firstPage}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      });
-                  })()}
+                          );
+                        });
+                    })()}
+                  </div>
                 </div>
               </aside>
+
 
               {zoomSrc ? (
                 <ImageMagnifierOverlay src={zoomSrc} onClose={() => setZoomSrc("")} initialScale={1} />

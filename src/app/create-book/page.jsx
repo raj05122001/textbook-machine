@@ -171,6 +171,7 @@ export default function CreateBookPage() {
   /* ---------- syllabus state ---------- */
   const [subject, setSubject] = useState("");
   const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
   const [syllabusDoc, setSyllabusDoc] = useState({
     subject_name: "",
     subject_description: "",
@@ -670,73 +671,56 @@ export default function CreateBookPage() {
       setErrors([`Save failed: ${e.message}`]);
     }
   };
-  const sendFeedback = async (valueOrSend) => {
-    if (!syllabusId) {
-      setErrors(["No syllabus to send feedback for."]);
-      return;
+const sendFeedback = async (valueOrSend) => {
+  if (!syllabusId) {
+    setErrors(["No syllabus to send feedback for."]);
+    return;
+  }
+
+  const isSendClick =
+    (typeof valueOrSend === "object" && valueOrSend?.type === "SEND") ||
+    valueOrSend === "SEND";
+
+  const text = isSendClick
+    ? (typeof valueOrSend === "object" ? valueOrSend.text : feedbackText)
+    : valueOrSend;
+
+  if (!isSendClick) {
+    const live = String(text ?? "");
+    setFeedbackText(live);
+    if (live.trim()) {
+      setFeedbackError("");
     }
+    return;
+  }
 
-    // Is this a click on SEND, or just typing?
-    const isSendClick =
-      (typeof valueOrSend === "object" && valueOrSend?.type === "SEND") ||
-      valueOrSend === "SEND";
+  const toSend = String(text ?? "").trim();
+  if (!toSend) {
+    setFeedbackError("Feedback cannot be empty.");
+    return;
+  }
 
-    // Resolve the text
-    const text = isSendClick
-      ? (typeof valueOrSend === "object" ? valueOrSend.text : feedbackText)
-      : valueOrSend;
+  try {
+    syllabusExpectingRef.current = true;
+    setIsSyllabusStreaming(true);
+    setProcessingStep("Regenerating...");
 
-    // --- Typing path: keep parent in sync and clear stale "empty" error if any
-    if (!isSendClick) {
-      const live = String(text ?? "");
-      setFeedbackText(live);
-      // clear ONLY the "Feedback cannot be empty." message if user has typed something
-      if (live.trim()) {
-        setErrors((prev) => prev.filter((e) => e !== "Feedback cannot be empty."));
-      }
-      console.log("typing feedback:", live);
-      return;
-    }
+    openSyllabusSocket(syllabusId);
 
-    // --- SEND path
-    const toSend = String(text ?? "").trim();
-    if (!toSend) {
-      // ensure error is displayed only when actually empty at click time
-      setErrors((prev) => {
-        // avoid duplicates
-        if (prev.includes("Feedback cannot be empty.")) return prev;
-        return [...prev, "Feedback cannot be empty."];
-      });
-      return;
-    }
+    await jfetch(`/api/syllabi/${syllabusId}/feedback/`, {
+      method: "POST",
+      body: { feedback: toSend },
+    });
 
-    console.log("sending feedback:", toSend);
+    setFeedbackError("");
+    toast.success("Feedback sent");
+  } catch (e) {
+    syllabusExpectingRef.current = false;
+    setIsSyllabusStreaming(false);
+    setErrors([`Feedback failed: ${e.message}`]);
+  }
+};
 
-    try {
-      // we do expect fresh WS frames after sending
-      syllabusExpectingRef.current = true;
-      setIsSyllabusStreaming(true);
-      setProcessingStep("Regenerating...");
-
-      // make sure the socket is open
-      openSyllabusSocket(syllabusId);
-
-      await jfetch(`/api/syllabi/${syllabusId}/feedback/`, {
-        method: "POST",
-        body: { feedback: toSend },
-      });
-
-      // clear the stale empty-error on success (if it was shown previously)
-      setErrors((prev) => prev.filter((e) => e !== "Feedback cannot be empty."));
-
-      toast.success("Feedback sent");
-      // results will arrive via WS
-    } catch (e) {
-      syllabusExpectingRef.current = false;
-      setIsSyllabusStreaming(false);
-      setErrors([`Feedback failed: ${e.message}`]);
-    }
-  };
 
 
 
@@ -746,7 +730,7 @@ export default function CreateBookPage() {
       await jfetch(`/api/syllabi/${syllabusId}/approve/`, { method: "POST" });
       toast.success("Syllabus approved");
       pushIdsToUrl(bookId, syllabusId, { approved: true });
-      openContentSocket(syllabusId); // <— use syllabusId for WS
+      openContentSocket(syllabusId); 
       setCurrentStep(5);
       setCompletedSteps((prev) => new Set([...prev, 4]));
     } catch (e) {
@@ -879,6 +863,7 @@ export default function CreateBookPage() {
               onSave={saveEditedSyllabus}
               onFeedback={(v) => sendFeedback(v)}
               onApprove={approveSyllabus}
+               feedbackError={feedbackError}
             />
           )}
 

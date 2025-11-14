@@ -332,7 +332,7 @@ const Sidebar = ({ isOpen, onClose }) => {
           </div>
 
           {/* Bottom Settings */}
-          <div className="p-4 border-t border-gray-200">
+          {/* <div className="p-4 border-t border-gray-200">
             <Link
               href="/settings"
               onClick={() => onClose?.()}
@@ -345,7 +345,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <Settings className="h-5 w-5" />
               <span>Settings</span>
             </Link>
-          </div>
+          </div> */}
         </div>
       </aside>
     </>
