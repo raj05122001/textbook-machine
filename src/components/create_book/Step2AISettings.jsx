@@ -55,8 +55,8 @@ export function Step2AISettings({
           <label className="flex items-start space-x-3">
             <input
               type="checkbox"
-              checked={!!formData.processingOptions?.createQuestions}
-              onChange={() => toggleProc("createQuestions")}
+              checked={!!formData.processingOptions?.include_questions}
+              onChange={() => toggleProc("include_questions")}
               className="mt-1"
             />
             <div>
@@ -67,7 +67,7 @@ export function Step2AISettings({
             </div>
           </label>
 
-          <label className="flex items-start space-x-3">
+          {/* <label className="flex items-start space-x-3">
             <input
               type="checkbox"
               checked={!!formData.processingOptions?.addReferences}
@@ -78,21 +78,6 @@ export function Step2AISettings({
               <div className="font-medium">Add References</div>
               <div className="text-sm text-gray-600">
                 Include relevant citations and reference materials
-              </div>
-            </div>
-          </label>
-
-          {/* <label className="flex items-start space-x-3">
-            <input
-              type="checkbox"
-              checked={!!formData.processingOptions?.improveContent}
-              onChange={() => toggleProc("improveContent")}
-              className="mt-1"
-            />
-            <div>
-              <div className="font-medium">Improve Content</div>
-              <div className="text-sm text-gray-600">
-                Enhance readability and fix grammar issues
               </div>
             </div>
           </label> */}

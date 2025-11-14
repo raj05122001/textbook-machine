@@ -163,7 +163,9 @@ export default function CreateBookPage() {
     expected_pages: "",
     target_group: "",
     visibility: "",
-    processingOptions: {},
+    processingOptions: {
+      include_questions: true,
+    },
   });
 
   /* ---------- syllabus state ---------- */
@@ -552,6 +554,7 @@ export default function CreateBookPage() {
       country_region: formData.country_region || "INDIA",
       expected_pages: Number(formData.expected_pages) || 200,
       target_group: formData.target_group || "STUDENTS",
+      include_questions: formData?.processingOptions?.include_questions
     };
     try {
       const data = await jfetch("/api/books/", {
