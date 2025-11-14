@@ -1114,7 +1114,7 @@ function ThemePanel({
                         position: "absolute",
                         top: "120%",
                         right: 0,
-                        zIndex: 20,
+                        zIndex: 200,
                         width: 260,
                         padding: 10,
                         borderRadius: 10,
@@ -1157,7 +1157,7 @@ function ThemePanel({
                         Choose Background (all pages)
                       </div>
 
-                      <div style={{ color: "#cbd5f5", lineHeight: 1.5 }}>
+                      <div style={{ color: "#cbd5f5", lineHeight: 1.5,zIndex:1000 }}>
                         Tip: 2480×3508 (A4 @ 300 DPI) best rahega. SVG/data URL bhi
                         chalega. Agar “Add watermark” on hai, to upload hote hi
                         diagonal repeated text embed ho jayega.

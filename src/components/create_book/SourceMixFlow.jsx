@@ -17,7 +17,9 @@ const WS_URL = "wss://tbmplus-backend.ultimeet.io/ws/vectorize/";
 const clamp = (n) => Math.max(0, Math.min(100, Number.isFinite(n) ? n : 0));
 
 function normalize3(a, b, c) {
-  const A = clamp(a), B = clamp(b), C = clamp(c);
+  const A = clamp(a),
+    B = clamp(b),
+    C = clamp(c);
   const sum = A + B + C || 1;
   const primary = Math.round((A * 100) / sum);
   const trusted = Math.round((B * 100) / sum);
@@ -76,29 +78,51 @@ async function uploadToS3(presign, fileObj, onProgress) {
 
 /* --------------------------- helper: primary_knowledge -------------------------- */
 async function createPrimaryKnowledgeRecords({ records }) {
-  const { data } = await axiosInstance.post("/primary_knowledge/", { records }, {
-    headers: { "Content-Type": "application/json" },
-  });
+  const { data } = await axiosInstance.post(
+    "/primary_knowledge/",
+    { records },
+    {
+      headers: { "Content-Type": "application/json" },
+    }
+  );
   const ids = data?.knowledge_ids || [];
-  if (!Array.isArray(ids) || !ids.length) throw new Error("No knowledge_ids returned");
+  if (!Array.isArray(ids) || !ids.length)
+    throw new Error("No knowledge_ids returned");
   return ids;
 }
 
 /* ------------------------------- helper: WS ------------------------------ */
-function vectorizeOverWS(knowledgeIds, book_id, { timeoutMs = 90_000 } = {}) {
+function vectorizeOverWS(
+  knowledgeIds,
+  book_id,
+  { timeoutMs = 90_000, onStatus } = {}
+) {
   return new Promise((resolve) => {
     const ws = new WebSocket(WS_URL);
     let done = false;
 
+    const taggedStatus = (payload) => {
+      const ts = new Date().toLocaleTimeString();
+      const base =
+        payload && typeof payload === "object" ? payload : { raw: payload };
+      onStatus?.({ ts, ...base });
+    };
+
     const finish = (ok = true) => {
       if (done) return;
       done = true;
-      try { ws.close(); } catch {}
+      try {
+        ws.close();
+      } catch {}
       resolve(ok);
     };
 
     const timer = setTimeout(() => {
       console.warn("[WS] vectorize timed out; continuing optimistically.");
+      taggedStatus({
+        status: "timeout",
+        message: "Vectorization timed out (continuing).",
+      });
       finish(true);
     }, timeoutMs);
 
@@ -112,9 +136,17 @@ function vectorizeOverWS(knowledgeIds, book_id, { timeoutMs = 90_000 } = {}) {
         book_id: book_id,
       };
       try {
+        taggedStatus({
+          status: "connecting",
+          message: "Connecting to vectorization service…",
+        });
         ws.send(JSON.stringify(msg));
       } catch {
         clearAll();
+        taggedStatus({
+          status: "send_error",
+          message: "Failed to send vectorization request.",
+        });
         finish(false);
       }
     };
@@ -122,6 +154,7 @@ function vectorizeOverWS(knowledgeIds, book_id, { timeoutMs = 90_000 } = {}) {
     ws.onmessage = (evt) => {
       try {
         const payload = JSON.parse(evt.data || "{}");
+        taggedStatus(payload);
         const status = String(payload?.status || "").toLowerCase();
         if (status === "completed" || status === "all_completed") {
           clearAll();
@@ -134,11 +167,19 @@ function vectorizeOverWS(knowledgeIds, book_id, { timeoutMs = 90_000 } = {}) {
 
     ws.onerror = () => {
       clearAll();
+      taggedStatus({
+        status: "error",
+        message: "WebSocket error (continuing).",
+      });
       finish(true);
     };
 
     ws.onclose = () => {
       clearAll();
+      taggedStatus({
+        status: "closed",
+        message: "Vectorization channel closed.",
+      });
       finish(true);
     };
   });
@@ -157,7 +198,7 @@ export default function SourceMixFlow({
   onSaved,
 }) {
   const defaultMix = { primary: 80, trusted: 15, internet: 5, urls: ["", ""] };
-  const fileInputRef = React.useRef(null);
+  const fileInputRef = useRef(null);
 
   const [dirty, setDirty] = useState(false);
   const [hasSavedOnce, setHasSavedOnce] = useState(false);
@@ -172,6 +213,9 @@ export default function SourceMixFlow({
   const [files, setFiles] = useState([]);
   const [uploadPct, setUploadPct] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [wsStatus, setWsStatus] = useState(null);
+  const [locked, setLocked] = useState(false); // success ke baad lock
+
   const onPickFiles = (e) => setFiles(Array.from(e.target.files || []));
 
   useEffect(() => {
@@ -180,7 +224,14 @@ export default function SourceMixFlow({
 
   useEffect(() => {
     setDirty(true);
-  }, [option, value?.primary, value?.trusted, value?.internet, urls.length, files.length]);
+  }, [
+    option,
+    value?.primary,
+    value?.trusted,
+    value?.internet,
+    urls.length,
+    files.length,
+  ]);
 
   const mix = useMemo(() => {
     if (isMixture) {
@@ -203,19 +254,25 @@ export default function SourceMixFlow({
     nextVal = clamp(nextVal);
     if (which === "primary") {
       const rest = 100 - nextVal;
-      const t = mix.trusted, i = mix.internet, sum = t + i || 1;
+      const t = mix.trusted,
+        i = mix.internet,
+        sum = t + i || 1;
       const trusted = Math.round((t / sum) * rest);
       const internet = clamp(rest - trusted);
       emitChange({ primary: nextVal, trusted, internet });
     } else if (which === "trusted") {
       const rest = 100 - nextVal;
-      const p = mix.primary, i = mix.internet, sum = p + i || 1;
+      const p = mix.primary,
+        i = mix.internet,
+        sum = p + i || 1;
       const primary = Math.round((p / sum) * rest);
       const internet = clamp(rest - primary);
       emitChange({ primary, trusted: nextVal, internet });
     } else {
       const rest = 100 - nextVal;
-      const p = mix.primary, t = mix.trusted, sum = p + t || 1;
+      const p = mix.primary,
+        t = mix.trusted,
+        sum = p + t || 1;
       const primary = Math.round((p / sum) * rest);
       const trusted = clamp(rest - primary);
       emitChange({ primary, trusted, internet: nextVal });
@@ -241,7 +298,12 @@ export default function SourceMixFlow({
 
   const handleUrlsChange = (nextUrls) => {
     setUrls(nextUrls);
-    if (isMixture) emitChange({ primary: mix.primary, trusted: mix.trusted, internet: mix.internet });
+    if (isMixture)
+      emitChange({
+        primary: mix.primary,
+        trusted: mix.trusted,
+        internet: mix.internet,
+      });
   };
 
   const buildPreferencesPayload = ({ mode, knowledgeIds = [] }) => {
@@ -286,13 +348,13 @@ export default function SourceMixFlow({
 
   const safeUrls = Array.isArray(urls) ? urls : [];
   const canSave =
-    dirty && (
-      (isUpload && true) ||
+    dirty &&
+    ((isUpload && true) ||
       (isPrimaryOnly && true) ||
       (isMixture &&
         (mix.trusted === 0 ||
-          (mix.trusted > 0 && safeUrls.some((u) => isHttpUrl(String(u || "").trim())))))
-    );
+          (mix.trusted > 0 &&
+            safeUrls.some((u) => isHttpUrl(String(u || "").trim()))))));
 
   const onClickSave = async () => {
     if (!bookId) {
@@ -306,6 +368,7 @@ export default function SourceMixFlow({
     }
     try {
       setBusy(true);
+      setWsStatus(null);
 
       if (isUpload) {
         if (!files.length) {
@@ -314,13 +377,30 @@ export default function SourceMixFlow({
           return;
         }
 
-        // 1) upload files -> s3 keys
+        // 1) upload files -> s3 keys (multi-file progress -> circle)
         const keys = [];
-        for (const file of files) {
-          setUploadPct(5);
-          const presign = await getPresign({ fileName: file.name, fileType: file.type });
-          await uploadToS3(presign, file, (p) => setUploadPct(p));
-          if (!presign.s3_key) throw new Error("s3_key missing from presign response");
+        const totalFiles = files.length;
+
+        for (let idx = 0; idx < files.length; idx++) {
+          const file = files[idx];
+          const startShare = (idx / totalFiles) * 100;
+
+          setUploadPct(Math.round(startShare));
+
+          const presign = await getPresign({
+            fileName: file.name,
+            fileType: file.type,
+          });
+
+          await uploadToS3(presign, file, (p) => {
+            const perFileShare = 100 / totalFiles;
+            const overall =
+              startShare + Math.min(100, Math.max(0, p)) * (perFileShare / 100);
+            setUploadPct(Math.min(99, Math.round(overall)));
+          });
+
+          if (!presign.s3_key)
+            throw new Error("s3_key missing from presign response");
           keys.push(presign.s3_key);
         }
 
@@ -328,28 +408,40 @@ export default function SourceMixFlow({
         const records = keys.map((k) => ({
           s3_path_key: k,
           subject: String(subject || "").trim() || undefined,
-          standard: String(formData?.educational_level || "").trim() || undefined,
+          standard:
+            String(formData?.educational_level || "").trim() || undefined,
           book_type: String(formData?.category || "").trim() || undefined,
-          book_language: String(formData?.language || "").trim().toUpperCase() || undefined,
+          book_language:
+            String(formData?.language || "").trim().toUpperCase() || undefined,
         }));
         const knowledgeIds = await createPrimaryKnowledgeRecords({ records });
 
-        // 3) vectorize (resolves on complete/close/timeout)
-        await vectorizeOverWS(knowledgeIds, bookId, { timeoutMs: 90_000 });
+        // 3) vectorize (real-time status -> wsStatus)
+        setWsStatus({
+          status: "queued",
+          message: "Queued for vectorization…",
+          ts: new Date().toLocaleTimeString(),
+        });
+        await vectorizeOverWS(knowledgeIds, bookId, {
+          timeoutMs: 90_000,
+          onStatus: setWsStatus,
+        });
 
         // 4) save content preferences with UPLOADED
-        const payload = buildPreferencesPayload({ mode: "upload", knowledgeIds });
+        const payload = buildPreferencesPayload({
+          mode: "upload",
+          knowledgeIds,
+        });
         await axiosInstance.post("/content_preferences/", payload, {
           headers: { "Content-Type": "application/json" },
         });
 
-        // ---- ORDER FIX APPLIED HERE ----
-        setFiles([]);          // clear first
+        setFiles([]);
         setUploadPct(0);
         setHasSavedOnce(true);
-        setDirty(false);       // then mark clean
+        setDirty(false);
         onSaved?.(true);
-        // --------------------------------
+        setLocked(true); // lock after success
 
         toast.success("Uploaded, vectorized and preferences saved.");
         return;
@@ -363,6 +455,7 @@ export default function SourceMixFlow({
         setHasSavedOnce(true);
         setDirty(false);
         onSaved?.(true);
+        setLocked(true);
         toast.success("Preferences saved (Primary 100%).");
         return;
       }
@@ -375,15 +468,21 @@ export default function SourceMixFlow({
       setHasSavedOnce(true);
       setDirty(false);
       onSaved?.(true);
+      setLocked(true);
       toast.success("Preferences saved (Mixture).");
     } catch (err) {
       console.error(err);
-      toast.error(typeof err?.message === "string" ? err.message : "Failed to save.");
+      toast.error(
+        typeof err?.message === "string" ? err.message : "Failed to save."
+      );
     } finally {
       setBusy(false);
       setUploadPct(0);
     }
   };
+
+  const progressPct = Math.max(0, Math.min(100, uploadPct || 0));
+  const progressDeg = progressPct * 3.6; // 0–100 -> 0–360
 
   return (
     <div className="w-full">
@@ -416,34 +515,76 @@ export default function SourceMixFlow({
           <div className="mb-2 font-semibold">Upload your files</div>
           <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3 hover:bg-white">
             <div className="flex items-center gap-3">
+              <div className="relative h-8 w-8">
+                {busy && files.length > 0 && (
+                  <>
+                    {/* outer ring */}
+                    <div className="absolute inset-0 rounded-full border border-slate-300/70" />
+
+                    {/* progress arc */}
+                    <div
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background: `conic-gradient(
+                          #2563eb 0deg,
+                          #2563eb ${progressDeg}deg,
+                          transparent ${progressDeg}deg,
+                          transparent 360deg
+                        )`,
+                        transform: "rotate(-90deg)",
+                        transition: "background 0.2s ease-out",
+                      }}
+                    />
+
+                    {/* inner cutout */}
+                    <div className="absolute inset-[3px] rounded-full bg-slate-50" />
+                  </>
+                )}
+              </div>
+
               <UploadIcon className="h-5 w-5" />
               <div className="text-sm text-gray-700">
                 Choose files (PDF, DOCX, Images, etc.)
               </div>
             </div>
-            <input type="file" multiple onChange={onPickFiles} className="hidden" ref={fileInputRef} />
-            <span className="rounded-md border bg-white px-3 py-1 text-sm">Browse</span>
+            <input
+              type="file"
+              multiple
+              onChange={onPickFiles}
+              className="hidden"
+              ref={fileInputRef}
+            />
+            <span className="rounded-md border bg-white px-3 py-1 text-sm">
+              Browse
+            </span>
           </label>
 
-          {files.length > 0 && (
-            <>
-              <ul className="mt-3 list-disc pl-5 text-sm text-gray-600">
-                {files.map((f, i) => (
-                  <li key={i}>
-                    {f.name}{" "}
-                    <span className="text-xs text-gray-400">({f.size} bytes)</span>
-                  </li>
-                ))}
-              </ul>
-              {busy && (
-                <div className="mt-3 h-2 w-full overflow-hidden rounded bg-gray-200">
-                  <div
-                    className="h-2 bg-blue-600 transition-all"
-                    style={{ width: `${Math.min(99, uploadPct)}%` }}
-                  />
-                </div>
+          {/* WebSocket live status row (vectorization) */}
+          {wsStatus && (
+            <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+              <span className="font-medium">
+                {wsStatus.ts ? `${wsStatus.ts} – ` : ""}
+                {wsStatus.status || ""}
+              </span>
+              {wsStatus.message && (
+                <span className="max-w-[55%] truncate text-slate-500">
+                  {wsStatus.message}
+                </span>
               )}
-            </>
+            </div>
+          )}
+
+          {files.length > 0 && (
+            <ul className="mt-3 list-disc pl-5 text-sm text-gray-600">
+              {files.map((f, i) => (
+                <li key={i}>
+                  {f.name}{" "}
+                  <span className="text-xs text-gray-400">
+                    ({f.size} bytes)
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
@@ -501,12 +642,20 @@ export default function SourceMixFlow({
         <button
           type="button"
           onClick={onClickSave}
-          disabled={!canSave || busy}
+          disabled={locked || !canSave || busy}
           className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
           title="Save content preferences"
         >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {busy ? "Working…" : hasSavedOnce && !dirty ? "Saved ✓" : "Save Preferences"}
+          {busy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {busy
+            ? "Working…"
+            : locked || (hasSavedOnce && !dirty)
+            ? "Saved ✓"
+            : "Save Preferences"}
         </button>
       </div>
     </div>
@@ -527,7 +676,9 @@ function OptionTile({ active, subtitle, onClick }) {
       <span
         className={[
           "grid h-5 w-5 place-items-center rounded-full border",
-          active ? "border-blue-600 text-blue-600" : "border-gray-300 text-transparent",
+          active
+            ? "border-blue-600 text-blue-600"
+            : "border-gray-300 text-transparent",
         ].join(" ")}
       >
         <span className="h-2.5 w-2.5 rounded-full bg-current" />
@@ -576,7 +727,10 @@ function UrlFields({ urls, onChange, minCount = 2, disabled }) {
   useEffect(() => {
     const arr = Array.isArray(urls) ? urls : [];
     if (arr.length < minCount) {
-      onChange([...arr, ...Array.from({ length: minCount - arr.length }, () => "")]);
+      onChange([
+        ...arr,
+        ...Array.from({ length: minCount - arr.length }, () => ""),
+      ]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minCount]);
@@ -598,7 +752,9 @@ function UrlFields({ urls, onChange, minCount = 2, disabled }) {
               onChange={(e) => updateRow(i, e.target.value)}
               className={[
                 "w-full rounded-lg border px-3 py-2 text-sm outline-none",
-                valid ? "border-gray-300 focus:border-blue-500" : "border-red-500 focus:border-red-600",
+                valid
+                  ? "border-gray-300 focus:border-blue-500"
+                  : "border-red-500 focus:border-red-600",
               ].join(" ")}
             />
             <button
@@ -617,7 +773,11 @@ function UrlFields({ urls, onChange, minCount = 2, disabled }) {
               disabled={disabled || list.length <= minCount}
               className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm hover:bg-gray-100 disabled:opacity-50"
               aria-label="Remove URL"
-              title={list.length <= minCount ? `Minimum ${minCount} URLs required` : "Remove URL"}
+              title={
+                list.length <= minCount
+                  ? `Minimum ${minCount} URLs required`
+                  : "Remove URL"
+              }
             >
               <Trash2 className="h-4 w-4" /> Remove
             </button>
