@@ -3308,7 +3308,7 @@ export default function BookDetailsPage() {
           >
             <DocView
               pages={pages}
-              fontSize={12}
+              fontSize={14}
               deviceDimensions={{ width: 794 }}
               theme={effectiveTheme}
               onPageInView={setCurrentPage}

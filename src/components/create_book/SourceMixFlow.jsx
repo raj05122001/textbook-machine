@@ -113,7 +113,7 @@ function vectorizeOverWS(
       done = true;
       try {
         ws.close();
-      } catch {}
+      } catch { }
       resolve(ok);
     };
 
@@ -245,8 +245,14 @@ export default function SourceMixFlow({
   const total = mix.primary + mix.trusted + mix.internet;
 
   const emitChange = (next) => {
-    if (isMixture) onChange?.({ ...next, urls });
-    else onChange?.(next);
+    if (isMixture) {
+      onChange?.({
+        ...next,
+        urls: Array.isArray(urls) ? urls : [],
+      });
+    } else {
+      onChange?.(next);
+    }
   };
 
   const updateOne = (which, nextVal) => {
@@ -298,13 +304,17 @@ export default function SourceMixFlow({
 
   const handleUrlsChange = (nextUrls) => {
     setUrls(nextUrls);
-    if (isMixture)
-      emitChange({
+
+    if (isMixture) {
+      onChange?.({
         primary: mix.primary,
         trusted: mix.trusted,
         internet: mix.internet,
+        urls: nextUrls,
       });
+    }
   };
+
 
   const buildPreferencesPayload = ({ mode, knowledgeIds = [] }) => {
     const payload = {
@@ -613,22 +623,17 @@ export default function SourceMixFlow({
         </div>
       )}
 
-      {/* URLs when trusted > 0 */}
-      {isMixture && (
+      {isMixture && mix.trusted > 0 && (
         <div className="mt-6 rounded-xl border bg-slate-50 p-4">
           <UrlFields
             urls={urls}
             onChange={handleUrlsChange}
             minCount={2}
-            disabled={busy || mix.trusted === 0}
+            disabled={busy}
           />
-          {mix.trusted === 0 && (
-            <p className="mt-2 text-xs text-gray-500">
-              Increase “Trusted Sources (URLs)” weight to enable these fields.
-            </p>
-          )}
         </div>
       )}
+
 
       {isMixture && total !== 100 && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-amber-800">
@@ -654,8 +659,8 @@ export default function SourceMixFlow({
           {busy
             ? "Working…"
             : locked || (hasSavedOnce && !dirty)
-            ? "Saved ✓"
-            : "Save Preferences"}
+              ? "Saved ✓"
+              : "Save Preferences"}
         </button>
       </div>
     </div>
@@ -712,36 +717,57 @@ function SliderCard({ title, value, disabled, onChange }) {
 }
 
 function UrlFields({ urls, onChange, minCount = 2, disabled }) {
-  const addRow = () => onChange([...(urls || []), ""]);
-  const updateRow = (idx, val) => {
-    const next = [...(urls || [])];
-    next[idx] = val;
-    onChange(next);
-  };
-  const removeRow = (idx) => {
-    const next = [...(urls || [])];
-    next.splice(idx, 1);
-    onChange(next.length ? next : ["", ""]);
+  const rawList = Array.isArray(urls) ? urls : [];
+
+  // Hamesha kam se kam minCount rows ensure karega
+  const ensureMin = (arr) => {
+    if (arr.length >= minCount) return arr;
+    return [
+      ...arr,
+      ...Array.from({ length: minCount - arr.length }, () => ""),
+    ];
   };
 
-  useEffect(() => {
-    const arr = Array.isArray(urls) ? urls : [];
-    if (arr.length < minCount) {
-      onChange([
-        ...arr,
-        ...Array.from({ length: minCount - arr.length }, () => ""),
-      ]);
+  // UI me jo list dikh rahi hai
+  const list = ensureMin(rawList);
+
+  const handleAdd = () => {
+    // naya item actual data (rawList) me add karo
+    const nextRaw = [...rawList, ""];
+    onChange(ensureMin(nextRaw));
+  };
+
+  const handleUpdate = (idx, val) => {
+    const nextRaw = [...rawList];
+
+    // agar index rawList se bahar chala gaya ho (blank rows ki wajah se)
+    if (idx >= nextRaw.length) {
+      // missing blank rows ko fill karo
+      while (nextRaw.length <= idx) nextRaw.push("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minCount]);
 
-  const list = Array.isArray(urls) ? urls : [];
+    nextRaw[idx] = val;
+    onChange(ensureMin(nextRaw));
+  };
+
+  const handleRemove = (idx) => {
+    // agar already minCount ya usse kam rows hain toh remove mat karo
+    if (rawList.length <= minCount) return;
+
+    const nextRaw = [...rawList];
+
+    // ✅ jis index pe click hua hai wahi remove hoga
+    nextRaw.splice(idx, 1);
+
+    onChange(ensureMin(nextRaw));
+  };
 
   return (
     <div className="space-y-3">
       {list.map((u, i) => {
         const trimmed = String(u || "").trim();
         const valid = trimmed === "" ? true : isHttpUrl(trimmed);
+
         return (
           <div key={i} className="flex items-start gap-2">
             <input
@@ -749,7 +775,7 @@ function UrlFields({ urls, onChange, minCount = 2, disabled }) {
               placeholder={`https://example.com/resource #${i + 1}`}
               value={u}
               disabled={disabled}
-              onChange={(e) => updateRow(i, e.target.value)}
+              onChange={(e) => handleUpdate(i, e.target.value)}
               className={[
                 "w-full rounded-lg border px-3 py-2 text-sm outline-none",
                 valid
@@ -757,9 +783,10 @@ function UrlFields({ urls, onChange, minCount = 2, disabled }) {
                   : "border-red-500 focus:border-red-600",
               ].join(" ")}
             />
+
             <button
               type="button"
-              onClick={() => addRow()}
+              onClick={handleAdd}
               disabled={disabled}
               className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm hover:bg-gray-100 disabled:opacity-50"
               aria-label="Add URL"
@@ -767,14 +794,15 @@ function UrlFields({ urls, onChange, minCount = 2, disabled }) {
             >
               <Plus className="h-4 w-4" /> Add
             </button>
+
             <button
               type="button"
-              onClick={() => (i >= minCount ? removeRow(i) : null)}
-              disabled={disabled || list.length <= minCount}
+              onClick={() => handleRemove(i)}
+              disabled={disabled || rawList.length <= minCount}
               className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-sm hover:bg-gray-100 disabled:opacity-50"
               aria-label="Remove URL"
               title={
-                list.length <= minCount
+                rawList.length <= minCount
                   ? `Minimum ${minCount} URLs required`
                   : "Remove URL"
               }
@@ -790,3 +818,4 @@ function UrlFields({ urls, onChange, minCount = 2, disabled }) {
     </div>
   );
 }
+

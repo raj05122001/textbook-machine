@@ -131,7 +131,6 @@ export default function CreatePrimaryBook({setUpdateState}) {
 
   useEffect(() => setMounted(true), []);
 
-  // load subjects when modal opens
   useEffect(() => {
     if (!open) return;
     let alive = true;
@@ -140,19 +139,9 @@ export default function CreatePrimaryBook({setUpdateState}) {
       try {
         setSubjectsLoading(true);
         setSubjectsErr('');
-        const all = [];
-        let url = '/subject/';
-        let guard = 0;
-        while (url && guard < 25) {
-          const { data } = await axiosInstance.get(url);
-          const items = data?.data || data?.results || [];
-          for (const it of items) {
-            all.push({ id: String(it.id), subject_name: it.subject_name });
-          }
-          url = data?.next || null;
-          guard += 1;
-        }
-        if (alive) setSubjects(all);
+        const { data } = await axiosInstance.get("/subject/?size=1000");
+        const items = data?.data || data?.results || [];
+        setSubjects(items);
       } catch (e) {
         console.error('[subjects] error', e);
         if (alive) setSubjectsErr('Failed to load subjects.');
