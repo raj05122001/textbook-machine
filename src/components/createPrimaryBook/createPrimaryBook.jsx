@@ -376,8 +376,7 @@ export default function CreatePrimaryBook({ setUpdateState }) {
     } catch (err) {
       console.error('[create] failed', err?.response?.status, err?.response?.data || err);
       const msg = extractErrorMessage(err);
-      // yaha tumhara error aayega:
-      // "s3_path_key: Primary_Knowledge_Metadata with this s3 path key already exists."
+
       toast.error(msg);
       setInlineError(msg);
       throw err;
@@ -392,7 +391,6 @@ export default function CreatePrimaryBook({ setUpdateState }) {
       await postCreateRecord(s3Key);
     } catch (e2) {
       console.error('[create] failed', e2);
-      // inlineError already set in postCreateRecord
     } finally {
       setSaving(false);
     }
