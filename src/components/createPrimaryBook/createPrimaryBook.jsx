@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { axiosInstance, authAxiosInstance } from '@/axios/AxiosInstans';
 import toast from 'react-hot-toast';
-import { X, Plus, UploadCloud, Loader2 } from 'lucide-react';
+import { X, Plus, UploadCloud, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
 
 /* ---------- helpers ---------- */
 function ordinal(n) {
@@ -34,7 +34,9 @@ function sendKnowledgeOverWS(url, knowledge, { timeoutMs = 12000, retries = 1 } 
     const clean = () => {
       if (timer) clearTimeout(timer);
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-        try { ws.close(); } catch {}
+        try {
+          ws.close();
+        } catch { }
       }
     };
 
@@ -64,8 +66,6 @@ function sendKnowledgeOverWS(url, knowledge, { timeoutMs = 12000, retries = 1 } 
       };
 
       ws.onmessage = (evt) => {
-        // If the server sends a specific ack shape, handle it here.
-        // We'll accept anything JSON that contains "ok" or "status":"ok"/"success"
         try {
           const data = JSON.parse(evt.data);
           const ok =
@@ -86,13 +86,12 @@ function sendKnowledgeOverWS(url, knowledge, { timeoutMs = 12000, retries = 1 } 
       };
 
       ws.onerror = () => {
-        // Will likely also trigger onclose; let onclose handle retry logic.
+        // let onclose handle
       };
 
       ws.onclose = () => {
         if (settled) return;
         if (attempt < retries) {
-          // retry after short delay
           setTimeout(() => tryOnce(attempt + 1), 600);
         } else {
           settled = true;
@@ -107,7 +106,7 @@ function sendKnowledgeOverWS(url, knowledge, { timeoutMs = 12000, retries = 1 } 
 }
 
 /* ============================= Component ============================= */
-export default function CreatePrimaryBook({setUpdateState}) {
+export default function CreatePrimaryBook({ setUpdateState }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -129,6 +128,10 @@ export default function CreatePrimaryBook({setUpdateState}) {
   const [uploadPct, setUploadPct] = useState(0);
   const [s3Key, setS3Key] = useState('');
 
+  // success + error
+  const [success, setSuccess] = useState(false);
+  const [inlineError, setInlineError] = useState('');
+
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
@@ -139,7 +142,7 @@ export default function CreatePrimaryBook({setUpdateState}) {
       try {
         setSubjectsLoading(true);
         setSubjectsErr('');
-        const { data } = await axiosInstance.get("/subject/?size=1000");
+        const { data } = await axiosInstance.get('/subject/?size=1000');
         const items = data?.data || data?.results || [];
         setSubjects(items);
       } catch (e) {
@@ -150,7 +153,9 @@ export default function CreatePrimaryBook({setUpdateState}) {
       }
     })();
 
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [open]);
 
   // esc to close
@@ -160,6 +165,24 @@ export default function CreatePrimaryBook({setUpdateState}) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, saving]);
+
+  // ✅ success → 2 sec me auto close
+  useEffect(() => {
+    if (!success) return;
+    const id = setTimeout(() => {
+      setSuccess(false);
+      handleClose();
+    }, 2000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [success]);
+
+  // ✅ error bar → 2 sec me hide
+  useEffect(() => {
+    if (!inlineError) return;
+    const id = setTimeout(() => setInlineError(''), 2000);
+    return () => clearTimeout(id);
+  }, [inlineError]);
 
   const canSubmit = useMemo(
     () => Boolean(s3Key && subjectId && standard && bookType && bookLanguage && !saving),
@@ -175,6 +198,8 @@ export default function CreatePrimaryBook({setUpdateState}) {
     setIsDragging(false);
     setUploadPct(0);
     setS3Key('');
+    setInlineError('');
+    setSuccess(false);
   };
 
   const handleClose = () => {
@@ -253,7 +278,9 @@ export default function CreatePrimaryBook({setUpdateState}) {
       }
     } catch (e) {
       console.error('[upload] failed', e);
-      toast.error('Upload failed');
+      const msg = e?.message || 'Upload failed';
+      toast.error(msg);
+      setInlineError(msg);
       setS3Key('');
     } finally {
       setSaving(false);
@@ -262,12 +289,21 @@ export default function CreatePrimaryBook({setUpdateState}) {
   };
 
   const onDrop = (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
     handleFilePicked(e.dataTransfer?.files?.[0] ?? null);
   };
-  const onDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
-  const onDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+  const onDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
 
   function normalizeBookTypeForAPI(bt) {
     if (!bt) return bt;
@@ -288,7 +324,7 @@ export default function CreatePrimaryBook({setUpdateState}) {
     const body = err?.response?.data;
     if (Array.isArray(body)) {
       return body
-        .map(e =>
+        .map((e) =>
           Object.entries(e)
             .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
             .join(' | ')
@@ -299,8 +335,8 @@ export default function CreatePrimaryBook({setUpdateState}) {
   }
 
   async function postCreateRecord(key) {
-    const subj = subjects.find(s => s.id === subjectId);
-    const standardLabel = STANDARD_OPTIONS.find(s => s.value === standard)?.label || standard;
+    const subj = subjects.find((s) => String(s.id) === String(subjectId));
+    const standardLabel = STANDARD_OPTIONS.find((s) => s.value === standard)?.label || standard;
     const bookTypeExact = normalizeBookTypeForAPI(bookType);
     const languageExact = normalizeLanguageForAPI(bookLanguage);
 
@@ -317,7 +353,6 @@ export default function CreatePrimaryBook({setUpdateState}) {
       const { data } = await authAxiosInstance.post('/primary_knowledge/', payload);
       toast.success('Primary knowledge record created');
 
-      // --- WebSocket step: send knowledge object ---
       const knowledge = {
         type: 'vectorize_book',
         knowledge_ids: data?.knowledge_ids,
@@ -336,11 +371,15 @@ export default function CreatePrimaryBook({setUpdateState}) {
         toast.error('Could not notify vectorizer (WS)');
       }
 
-      setUpdateState((prev)=>prev+1)
-      handleClose();
+      setUpdateState((prev) => prev + 1);
+      setSuccess(true);
     } catch (err) {
       console.error('[create] failed', err?.response?.status, err?.response?.data || err);
-      toast.error(extractErrorMessage(err));
+      const msg = extractErrorMessage(err);
+      // yaha tumhara error aayega:
+      // "s3_path_key: Primary_Knowledge_Metadata with this s3 path key already exists."
+      toast.error(msg);
+      setInlineError(msg);
       throw err;
     }
   }
@@ -353,7 +392,7 @@ export default function CreatePrimaryBook({setUpdateState}) {
       await postCreateRecord(s3Key);
     } catch (e2) {
       console.error('[create] failed', e2);
-      toast.error('Create failed');
+      // inlineError already set in postCreateRecord
     } finally {
       setSaving(false);
     }
@@ -390,7 +429,9 @@ export default function CreatePrimaryBook({setUpdateState}) {
           <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-xl border-b">
             <div>
               <h3 className="text-lg font-semibold leading-tight">Create Primary Book</h3>
-              <p className="text-xs text-gray-500">Upload file → get S3 key → POST /primary_knowledge/ → WS notify.</p>
+              <p className="text-xs text-gray-500">
+                Upload file → get S3 key → POST /primary_knowledge/ → WS notify.
+              </p>
             </div>
             <button
               onClick={handleClose}
@@ -409,7 +450,10 @@ export default function CreatePrimaryBook({setUpdateState}) {
                 onDragLeave={onDragLeave}
                 className={`relative rounded-xl border-2 border-dashed px-5 py-6
                             transition-all cursor-pointer
-                            ${isDragging ? 'border-violet-400 bg-violet-50/60' : 'border-gray-300 hover:bg-gray-50/60'}`}
+                            ${isDragging
+                    ? 'border-violet-400 bg-violet-50/60'
+                    : 'border-gray-300 hover:bg-gray-50/60'
+                  }`}
                 onClick={() => document.getElementById('pb-file-input')?.click()}
               >
                 <input
@@ -420,17 +464,29 @@ export default function CreatePrimaryBook({setUpdateState}) {
                   onChange={(e) => handleFilePicked(e.target.files?.[0] ?? null)}
                 />
                 <div className="flex items-center gap-4">
-                  <div className={`grid place-items-center rounded-xl p-3
-                                   ${s3Key ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                    {saving && !s3Key ? <Loader2 className="h-6 w-6 animate-spin" /> : <UploadCloud className="h-6 w-6" />}
+                  <div
+                    className={`grid place-items-center rounded-xl p-3
+                                   ${s3Key
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'bg-indigo-50 text-indigo-600'
+                      }`}
+                  >
+                    {saving && !s3Key ? (
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    ) : (
+                      <UploadCloud className="h-6 w-6" />
+                    )}
                   </div>
                   <div className="flex-1">
                     {!file ? (
                       <>
                         <div className="font-medium text-gray-900">
-                          Drag & drop file here, or <span className="text-indigo-600 underline">browse</span>
+                          Drag & drop file here, or{' '}
+                          <span className="text-indigo-600 underline">browse</span>
                         </div>
-                        <div className="text-xs text-gray-500">Accepted: PDF, DOC, DOCX, PNG, JPG, JPEG</div>
+                        <div className="text-xs text-gray-500">
+                          Accepted: PDF, DOC, DOCX, PNG, JPG, JPEG
+                        </div>
                       </>
                     ) : (
                       <>
@@ -446,7 +502,11 @@ export default function CreatePrimaryBook({setUpdateState}) {
                             />
                           </div>
                         ) : null}
-                        {s3Key ? <div className="mt-2 text-xs text-emerald-700">Uploaded ✓ — S3 Key: {s3Key}</div> : null}
+                        {s3Key ? (
+                          <div className="mt-2 text-xs text-emerald-700">
+                            Uploaded ✓ — S3 Key: {s3Key}
+                          </div>
+                        ) : null}
                       </>
                     )}
                   </div>
@@ -466,17 +526,25 @@ export default function CreatePrimaryBook({setUpdateState}) {
                       disabled={subjectsLoading || !!subjectsErr}
                     >
                       <option value="">
-                        {subjectsLoading ? 'Loading subjects…' : (subjectsErr ? 'Failed to load subjects' : 'Select subject…')}
+                        {subjectsLoading
+                          ? 'Loading subjects…'
+                          : subjectsErr
+                            ? 'Failed to load subjects'
+                            : 'Select subject…'}
                       </option>
                       {subjects.map((s) => (
-                        <option key={s.id} value={s.id}>{s.subject_name}</option>
+                        <option key={s.id} value={s.id}>
+                          {s.subject_name}
+                        </option>
                       ))}
                     </select>
                     {subjectsLoading && (
                       <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
                     )}
                   </div>
-                  {subjectsErr ? <p className="text-xs text-red-600">{subjectsErr}</p> : null}
+                  {subjectsErr ? (
+                    <p className="text-xs text-red-600">{subjectsErr}</p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-1.5">
@@ -489,7 +557,9 @@ export default function CreatePrimaryBook({setUpdateState}) {
                   >
                     <option value="">Select standard…</option>
                     {STANDARD_OPTIONS.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -504,7 +574,11 @@ export default function CreatePrimaryBook({setUpdateState}) {
                     required
                   >
                     <option value="">Select book type…</option>
-                    {BOOK_TYPE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {BOOK_TYPE_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -518,7 +592,11 @@ export default function CreatePrimaryBook({setUpdateState}) {
                     required
                   >
                     <option value="">Select language…</option>
-                    {LANGUAGE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {LANGUAGE_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -543,7 +621,11 @@ export default function CreatePrimaryBook({setUpdateState}) {
                              focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500"
                   style={{ backgroundImage: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
                 >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <UploadCloud className="h-4 w-4" />
+                  )}
                   <span className="font-medium">{saving ? 'Creating…' : 'Create Book'}</span>
                   <span className="absolute inset-0 rounded-xl ring-1 ring-white/10 pointer-events-none" />
                 </button>
@@ -555,10 +637,56 @@ export default function CreatePrimaryBook({setUpdateState}) {
     </div>
   );
 
+  // ✨ Success Modal with animation
+  const SuccessModal = (
+    <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="relative w-full max-w-sm mx-4">
+        <div className="absolute -inset-0.5 bg-gradient-to-tr from-emerald-400 via-sky-400 to-indigo-500 opacity-80 blur-2xl" />
+        <div className="relative rounded-2xl bg-slate-950 text-white px-6 py-6 flex flex-col items-center gap-3 shadow-2xl">
+          <div className="relative mb-1">
+            <div className="h-16 w-16 rounded-full bg-emerald-500/15 border border-emerald-400/50 grid place-items-center animate-pulse">
+              <div className="h-10 w-10 rounded-full bg-emerald-500 grid place-items-center animate-[ping_1.1s_ease-out_1]">
+                <CheckCircle2 className="h-6 w-6 text-white" />
+              </div>
+            </div>
+            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-pink-400 animate-bounce" />
+            <span className="absolute -bottom-1 -left-2 h-2 w-2 rounded-full bg-yellow-300 animate-bounce" />
+            <span className="absolute -top-2 left-4 h-1.5 w-1.5 rounded-full bg-sky-300 animate-pulse" />
+          </div>
+
+          <h3 className="text-lg font-semibold text-center">Primary Book Created</h3>
+          <p className="text-xs text-slate-300 text-center leading-relaxed">
+            Your book is saved and vectorization is queued.
+            <br />
+            You can continue working — we&apos;ll close this in a moment.
+          </p>
+
+          <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] text-emerald-300/80">
+            <Sparkles className="h-3 w-3" />
+            <span>Auto closing in 2 seconds</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const ErrorBar = inlineError && mounted
+    ? createPortal(
+      <div className="fixed inset-x-0 bottom-4 z-[100002] flex justify-center px-4 pointer-events-none">
+        <div className="pointer-events-auto w-full max-w-xl rounded-xl bg-red-600 text-white px-4 py-3 shadow-lg border border-red-300/70">
+          <p className="text-sm font-medium truncate">{inlineError}</p>
+        </div>
+      </div>,
+      document.body
+    )
+    : null;
+
   return (
     <div>
       {Button}
       {open && mounted ? createPortal(Modal, document.body) : null}
+      {success && mounted ? createPortal(SuccessModal, document.body) : null}
+      {ErrorBar}
     </div>
   );
 }
