@@ -387,7 +387,7 @@ export default function BookTile({ book, onClick }) {
       className="relative w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-400 rounded-xl"
       aria-label={`Open ${book?.title || 'book'}`}
     >
-      <div className="relative h-72 group">
+      <div className="relative h-82 group">
         <div
           className={`relative h-full rounded-lg shadow-lg transition-transform duration-300 will-change-transform `}
           style={{ transformStyle: 'preserve-3d' }}
