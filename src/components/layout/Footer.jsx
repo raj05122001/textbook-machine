@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { 
-  BookOpen, 
-  Mail, 
-  Phone, 
+import {
+  BookOpen,
+  Mail,
+  Phone,
   MapPin,
   Github,
   Twitter,
@@ -69,7 +69,7 @@ const Footer = () => {
             <p className="text-gray-400 mb-6 max-w-sm">
               Transform your syllabi and raw documents into professionally structured books with AI-powered automation.
             </p>
-            
+
             {/* Contact Info */}
             <div className="space-y-3">
               <div className="flex items-center space-x-3 text-sm">
@@ -93,7 +93,7 @@ const Footer = () => {
             <ul className="space-y-3">
               {footerLinks.product.map((link) => (
                 <li key={link.href}>
-                  <Link 
+                  <Link
                     href={link.href}
                     className="text-sm hover:text-white transition-colors duration-200 flex items-center space-x-1"
                   >
@@ -106,14 +106,13 @@ const Footer = () => {
               ))}
             </ul>
           </div>
-
           {/* Resources Links */}
           <div>
             <h3 className="text-white font-semibold mb-4">Resources</h3>
             <ul className="space-y-3">
               {footerLinks.resources.map((link) => (
                 <li key={link.href}>
-                  <Link 
+                  <Link
                     href={link.href}
                     className="text-sm hover:text-white transition-colors duration-200 flex items-center space-x-1"
                   >
@@ -133,7 +132,7 @@ const Footer = () => {
             <ul className="space-y-3">
               {footerLinks.support.map((link) => (
                 <li key={link.href}>
-                  <Link 
+                  <Link
                     href={link.href}
                     className="text-sm hover:text-white transition-colors duration-200 flex items-center space-x-1"
                   >
@@ -153,7 +152,7 @@ const Footer = () => {
             <ul className="space-y-3">
               {footerLinks.legal.map((link) => (
                 <li key={link.href}>
-                  <Link 
+                  <Link
                     href={link.href}
                     className="text-sm hover:text-white transition-colors duration-200"
                   >
@@ -233,7 +232,7 @@ const Footer = () => {
                 Get the latest updates on new features and AI improvements.
               </p>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row w-full lg:w-auto space-y-3 sm:space-y-0 sm:space-x-3">
               <input
                 type="email"
@@ -252,3 +251,151 @@ const Footer = () => {
 };
 
 export default Footer;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{/* Library Section */ }
+{/* <div className="mb-6">
+              <button
+                onClick={() => toggleSection('library')}
+                className="flex items-center justify-between w-full px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 rounded-lg"
+              >
+                <div className="flex items-center space-x-2">
+                  <Library className="h-4 w-4" />
+                  <span>Library</span>
+                </div>
+                {expandedSections.library ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+
+              {expandedSections.library && (
+                <div className="mt-2 space-y-1 pl-6">
+                  {libraryItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => onClose?.()}
+                        className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
+                          isActiveLink(item.href)
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                        </div>
+                        {item.count && (
+                          <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
+                            {item.count}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div> */}
+
+
+
+
+
+
+
+
+
+
+{/* <div className="mb-6">
+              <button
+                onClick={() => toggleSection('recent')}
+                className="flex items-center justify-between w-full px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 rounded-lg"
+              >
+                <div className="flex items-center space-x-2">
+                  <Clock className="h-4 w-4" />
+                  <span>Recent</span>
+                </div>
+                {expandedSections.recent ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+
+              {expandedSections.recent && (
+                <div className="mt-2 space-y-2 pl-6">
+                  {recentBooks.map((book) => (
+                    <Link
+                      key={book.id}
+                      href={`/books/${book.id}`}
+                      onClick={() => onClose?.()}
+                      className="block px-3 py-2 rounded-md text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="truncate">{book.title}</span>
+                        <span className="text-xs text-gray-400 ml-2">
+                          {book.progress}%
+                        </span>
+                      </div>
+                      <div className="mt-1">
+                        <div className="w-full bg-gray-200 rounded-full h-1">
+                          <div
+                            className="bg-blue-500 h-1 rounded-full transition-all"
+                            style={{ width: `${book.progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div> */}
+
+
+
+
+{/* Bottom Settings */ }
+{/* <div className="p-4 border-t border-gray-200">
+            <Link
+              href="/settings"
+              onClick={() => onClose?.()}
+              className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActiveLink('/settings')
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <Settings className="h-5 w-5" />
+              <span>Settings</span>
+            </Link>
+          </div> */}

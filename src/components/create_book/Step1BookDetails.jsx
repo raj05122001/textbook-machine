@@ -6,18 +6,17 @@ import { useDropzone } from 'react-dropzone';
 import {
   Upload, FileText, X, Check, AlertCircle, Loader2, BookOpen,
   Plus, Sparkles, Zap, Clock, Target, ChevronRight, ChevronLeft, Edit3,
-  Save, MessageSquare, CheckCircle2, Trash2, HelpCircle, ArrowRight
+  Save, MessageSquare, CheckCircle2, Trash2, HelpCircle, ArrowRight,
+  ChevronDown,        
 } from 'lucide-react';
 
-/* ================== STEP SUB-COMPONENTS ================== */
-/* ================== STEP SUB-COMPONENTS ================== */
+
 export function Step1BookDetails({
   formData,
   setFormData,
   fieldErrors = {},
   setFieldErrors,
 }) {
-  // helper: update value + clear field-specific error
   const handleChange = (field) => (e) => {
     const value = e.target.value;
     setFormData((p) => ({ ...p, [field]: value }));
@@ -25,11 +24,6 @@ export function Step1BookDetails({
       setFieldErrors((prev) => ({ ...prev, [field]: "" }));
     }
   };
-
-  const errorText = (field) =>
-    fieldErrors?.[field] ? (
-      <p className="mt-1 text-xs text-red-600">{fieldErrors[field]}</p>
-    ) : null;
 
   return (
     <div className="space-y-6">
@@ -41,170 +35,238 @@ export function Step1BookDetails({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Book Title */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Book Title *
-          </label>
-          <input
-            type="text"
-            value={formData.title}
-            onChange={handleChange("title")}
-            placeholder="Enter your book title"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {errorText("title")}
-        </div>
+        <FieldInput
+          label="Book Title"
+          required
+          value={formData.title}
+          onChange={handleChange("title")}
+          placeholder="Enter your book title"
+          error={fieldErrors?.title}
+        />
 
-        {/* Name / Author */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Author name *
-          </label>
-          <input
-            type="text"
-            value={formData.author}
-            onChange={handleChange("author")}
-            placeholder="Your name"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {errorText("author")}
-        </div>
+        <FieldInput
+          label="Author name"
+          required
+          value={formData.author}
+          onChange={handleChange("author")}
+          placeholder="Your name"
+          error={fieldErrors?.author}
+        />
 
-        {/* Description */}
         <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Description
-          </label>
-          <textarea
-            rows={4}
+          <FieldTextarea
+            label="Description"
             value={formData.description}
             onChange={handleChange("description")}
             placeholder="Brief description of your book"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            error={fieldErrors?.description}
           />
         </div>
 
-        {/* Category */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Category
-          </label>
-          <select
-            value={formData.category || ""}
-            onChange={handleChange("category")}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="" disabled>
-              Select Category
-            </option>
-            <option value="ACADEMICS">ACADEMICS</option>
-            <option value="TRAINING">TRAINING</option>
-          </select>
-        </div>
+        <FieldSelect
+          label="Category"
+          value={formData.category}
+          onChange={handleChange("category")}
+          placeholder="Select Category"
+          error={fieldErrors?.category}
+        >
+          <option value="ACADEMICS">ACADEMICS</option>
+          <option value="TRAINING">TRAINING</option>
+        </FieldSelect>
 
-        {/* Language */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Language
-          </label>
-          <select
-            value={formData.language || ""}
-            onChange={handleChange("language")}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="" disabled>
-              Select Language
-            </option>
-            <option value="ENGLISH">ENGLISH</option>
-            <option value="FRENCH">FRENCH</option>
-          </select>
-        </div>
+        <FieldSelect
+          label="Language"
+          value={formData.language}
+          onChange={handleChange("language")}
+          placeholder="Select Language"
+          error={fieldErrors?.language}
+        >
+          <option value="ENGLISH">ENGLISH</option>
+          <option value="FRENCH">FRENCH</option>
+        </FieldSelect>
 
-        {/* Educational Level */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Educational Level
-          </label>
-          <input
-            type="text"
-            value={formData.educational_level}
-            onChange={handleChange("educational_level")}
-            placeholder="e.g., 12TH, UG, PG"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+        <FieldInput
+          label="Educational Level"
+          value={formData.educational_level}
+          onChange={handleChange("educational_level")}
+          placeholder="e.g., 12TH, UG, PG"
+          error={fieldErrors?.educational_level}
+        />
 
-        {/* Difficulty */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Difficulty
-          </label>
-          <select
-            value={formData.difficulty_level || ""}
-            onChange={handleChange("difficulty_level")}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="" disabled>
-              Select Difficulty
-            </option>
-            <option value="EASY">EASY</option>
-            <option value="MODERATE">MODERATE</option>
-            <option value="HARD">HARD</option>
-          </select>
-        </div>
+        <FieldSelect
+          label="Difficulty"
+          value={formData.difficulty_level}
+          onChange={handleChange("difficulty_level")}
+          placeholder="Select Difficulty"
+          error={fieldErrors?.difficulty_level}
+        >
+          <option value="EASY">EASY</option>
+          <option value="MODERATE">MODERATE</option>
+          <option value="HARD">HARD</option>
+        </FieldSelect>
 
-        {/* Teaching Style */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Teaching Style
-          </label>
-          <select
-            value={formData.teaching_style || ""}
-            onChange={handleChange("teaching_style")}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="" disabled>
-              Select Teaching Style
-            </option>
-            <option value="PRACTICAL">PRACTICAL</option>
-            <option value="THEORITICAL">THEORITICAL</option>
-          </select>
-        </div>
+        <FieldSelect
+          label="Teaching Style"
+          value={formData.teaching_style}
+          onChange={handleChange("teaching_style")}
+          placeholder="Select Teaching Style"
+          error={fieldErrors?.teaching_style}
+        >
+          <option value="PRACTICAL">PRACTICAL</option>
+          <option value="THEORITICAL">THEORITICAL</option>
+        </FieldSelect>
 
-        {/* Expected Pages */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Expected Pages
-          </label>
-          <input
-            type="number"
-            min={1}
-            value={formData.expected_pages}
-            onChange={handleChange("expected_pages")}
-            placeholder="Approx. page count"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+        <FieldInput
+          label="Expected Pages"
+          type="number"
+          value={formData.expected_pages}
+          onChange={handleChange("expected_pages")}
+          placeholder="Approx. page count"
+          error={fieldErrors?.expected_pages}
+        />
 
-        {/* Target Group */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Target Group
-          </label>
-          <select
-            value={formData.target_group || ""}
-            onChange={handleChange("target_group")}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="" disabled>
-              Select Target Group
-            </option>
-            <option value="STUDENTS">STUDENTS</option>
-            <option value="PROFESSIONAL">PROFESSIONAL</option>
-          </select>
-        </div>
+        <FieldSelect
+          label="Target Group"
+          value={formData.target_group}
+          onChange={handleChange("target_group")}
+          placeholder="Select Target Group"
+          error={fieldErrors?.target_group}
+        >
+          <option value="STUDENTS">STUDENTS</option>
+          <option value="PROFESSIONAL">PROFESSIONAL</option>
+        </FieldSelect>
       </div>
     </div>
   );
 }
+
+function FieldWrapper({ label, required = false, error, children }) {
+  const hasError = Boolean(error);
+  const content =
+    typeof children === "function" ? children({ hasError }) : children;
+
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-sm font-medium text-gray-700">
+        <span className="flex items-center gap-1">
+          {label}
+          {required && <span className="text-red-500">*</span>}
+        </span>
+      </label>
+
+      <div
+        className={`
+          relative group
+          rounded-xl border bg-white shadow-sm
+          transition-all duration-150
+          ${
+            hasError
+              ? "border-red-400 ring-2 ring-red-200"
+              : "border-gray-200 hover:border-gray-300 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/25"
+          }
+        `}
+      >
+        {content}
+      </div>
+
+      {hasError && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function FieldInput({
+  label,
+  required = false,
+  error,
+  type = "text",
+  ...inputProps
+}) {
+  return (
+    <FieldWrapper label={label} required={required} error={error}>
+      <input
+        type={type}
+        className="
+          w-full bg-transparent
+          px-4 py-2.5
+          text-sm text-gray-900
+          focus:outline-none
+        "
+        {...inputProps}
+      />
+    </FieldWrapper>
+  );
+}
+
+function FieldTextarea({
+  label,
+  required = false,
+  error,
+  rows = 4,
+  ...textareaProps
+}) {
+  return (
+    <FieldWrapper label={label} required={required} error={error}>
+      <textarea
+        rows={rows}
+        className="
+          w-full bg-transparent
+          px-4 py-2.5
+          text-sm text-gray-900
+          resize-y
+          focus:outline-none
+        "
+        {...textareaProps}
+      />
+    </FieldWrapper>
+  );
+}
+
+function FieldSelect({
+  label,
+  value,
+  onChange,
+  placeholder = "Select an option",
+  children,
+  required = false,
+  error,
+}) {
+  return (
+    <FieldWrapper label={label} required={required} error={error}>
+      {({ hasError }) => (
+        <>
+          <select
+            value={value || ""}
+            onChange={onChange}
+            className="
+              w-full appearance-none bg-transparent
+              px-4 pr-10 py-2.5
+              text-sm text-gray-900
+              focus:outline-none
+              cursor-pointer
+            "
+          >
+            <option value="" disabled>
+              {placeholder}
+            </option>
+            {children}
+          </select>
+
+          <ChevronDown
+            className={`
+              pointer-events-none absolute right-3 top-1/2 -translate-y-1/2
+              h-4 w-4
+              ${
+                hasError
+                  ? "text-red-400"
+                  : "text-gray-400 group-hover:text-gray-500"
+              }
+              transition-colors duration-150
+            `}
+          />
+        </>
+      )}
+    </FieldWrapper>
+  );
+}
+
+

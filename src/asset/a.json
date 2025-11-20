@@ -1,0 +1,16 @@
+{
+
+    "title": "English Book",
+    "description": "",
+    "category": "ACADEMICS",
+    "language": "ENGLISH",
+    "educational_level": "12th",
+    "board": null,
+    "difficulty_level": "EASY",
+    "teaching_style": "PRACTICAL",
+    "author_name": "Priyanka Singh",
+    "country_region": "INDIA",
+    "target_group": "STUDENTS",
+    "created_at": "2025-11-18T20:59:25.703730",
+    "updated_at": "2025-11-18T22:20:41.772854"
+}

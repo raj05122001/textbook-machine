@@ -30,11 +30,12 @@ const Main = ({ children }) => {
           )}
 
           <main
-            className="flex-1 bg-gray-50 overflow-y-auto min-h-0"
+            className="flex-1 bg-[#eef2f6] overflow-y-auto min-h-0"
             style={{ height: `calc(100vh - ${HEADER_H}px)` }}
           >
-            <div className="p-4">{children}</div>
+            <div>{children}</div>
           </main>
+
         </div>
       </div>
     </Suspense>
