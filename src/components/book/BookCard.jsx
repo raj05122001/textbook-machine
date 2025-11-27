@@ -314,7 +314,7 @@ const d = (iso) => {
 
   const date = new Date(iso);
 
-  const day = String(date.getDate()).padStart(2, '0'); 
+  const day = String(date.getDate()).padStart(2, '0');
   const months = [
     'Jan',
     'Feb',
@@ -329,254 +329,351 @@ const d = (iso) => {
     'Nov',
     'Dec',
   ];
-  const mon = months[date.getMonth()]; 
+  const mon = months[date.getMonth()];
   const year = date.getFullYear();
 
   return `${day}/${mon}/${year}`;
 };
 
 
-const COVER_BASE = 'https://tbmplus-backend.ultimeet.io';
+
+
+
+
+
+const COVER_BASE = "https://tbmplus-backend.ultimeet.io";
 
 export default function BookTile({ book, onClick }) {
-  const [hover, setHover] = useState(false);
+  // ✅ 1) Single source of truth for title
+  const rawTitle = (book?.title || "").trim();
+  const displayTitle = rawTitle || "Untitled Book";
+  const displayTitleTc = tc(displayTitle); // Proper case: Math, Indian Constitution
 
-  const seed = book?.title || book?.category || '';
+  const seed = displayTitle || book?.category || "";
   const waveTheme = useMemo(() => waveThemeFromSeed(seed), [seed]);
 
   const coverPath =
     book?.cover_url || book?.cover_page || book?.coverPage || null;
   const coverUrl = coverPath
-    ? String(coverPath).startsWith('http')
+    ? String(coverPath).startsWith("http")
       ? coverPath
       : `${COVER_BASE}${coverPath}`
     : null;
 
   const status =
-    (book?.status || '').toUpperCase() === 'PUBLISHED'
-      ? 'published'
-      : (book?.status || '').toUpperCase() === 'APPROVED'
-        ? 'published'
-        : (book?.status || '').toUpperCase() === 'COMPLETED'
-          ? 'completed'
-          : (book?.status || '').toUpperCase().includes('PROGRESS')
-            ? 'in-progress'
-            : 'draft';
+    (book?.status || "").toUpperCase() === "PUBLISHED"
+      ? "published"
+      : (book?.status || "").toUpperCase() === "APPROVED"
+        ? "published"
+        : (book?.status || "").toUpperCase() === "COMPLETED"
+          ? "completed"
+          : (book?.status || "").toUpperCase().includes("PROGRESS")
+            ? "in-progress"
+            : "draft";
 
   const frontCoverStyle = coverUrl
     ? {
       backgroundImage: `url(${coverUrl})`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-      backfaceVisibility: 'hidden',
-      transformStyle: 'preserve-3d',
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      backfaceVisibility: "hidden",
+      transformStyle: "preserve-3d",
     }
     : {
       backgroundImage:
-        'linear-gradient(to bottom, #f9fafb 0%, #ffffff 40%, #ffffff 100%)',
-      backfaceVisibility: 'hidden',
-      transformStyle: 'preserve-3d',
+        "linear-gradient(to bottom, #f9fafb 0%, #ffffff 40%, #ffffff 100%)",
+      backfaceVisibility: "hidden",
+      transformStyle: "preserve-3d",
     };
 
   return (
     <button
       onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="relative w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-400 rounded-xl"
-      aria-label={`Open ${book?.title || 'book'}`}
+      className="
+        group relative w-full text-left rounded-3xl
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400
+        transition-transform duration-300 ease-out
+        hover:-translate-y-1
+      "
+      aria-label={`Open ${displayTitleTc}`}
     >
-      <div className="relative h-82 group">
+      {/* OUTER WRAPPER – GLASS CARD */}
+      <div
+        className="
+          relative rounded-3xl overflow-hidden
+          bg-white/10 border border-white/40
+          backdrop-blur-[18px]
+          transition-all duration-300
+        "
+      >
+        {/* SOFT INNER LIGHT */}
         <div
-          className={`relative h-full rounded-lg shadow-lg transition-transform duration-300 will-change-transform `}
-          style={{ transformStyle: 'preserve-3d' }}
-        >
-          <div
-            className="absolute inset-0 rounded-lg overflow-hidden"
-            style={frontCoverStyle}
-          >
-            {!coverUrl && (
-              <>
-                <div
-                  className="absolute -bottom-10 left-0 w-[140%] h-[80%] pointer-events-none"
-                  dangerouslySetInnerHTML={{ __html: waveTheme.patternSVG }}
-                />
-                <svg
-                  className="absolute -top-10 right-0 w-[80%] h-[50%] opacity-40 pointer-events-none"
-                  viewBox="0 0 400 200"
-                >
-                  <defs>
-                    <linearGradient
-                      id="lineGrad"
-                      x1="0"
-                      y1="0"
-                      x2="1"
-                      y2="0"
-                    >
-                      <stop
-                        offset="0%"
-                        stopColor="#d4d4d4"
-                        stopOpacity="0.2"
-                      />
-                      <stop
-                        offset="100%"
-                        stopColor={waveTheme.accentDark}
-                        stopOpacity="0.4"
-                      />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M-40,180 L200,-10"
-                    stroke="url(#lineGrad)"
-                    strokeWidth="0.6"
-                  />
-                  <path
-                    d="M0,200 L240,0"
-                    stroke="url(#lineGrad)"
-                    strokeWidth="0.6"
-                  />
-                  <path
-                    d="M40,210 L280,10"
-                    stroke="url(#lineGrad)"
-                    strokeWidth="0.6"
-                  />
-                  <path
-                    d="M80,220 L320,20"
-                    stroke="url(#lineGrad)"
-                    strokeWidth="0.6"
-                  />
-                </svg>
-              </>
-            )}
+          className="
+            pointer-events-none absolute inset-0 rounded-3xl
+            bg-gradient-to-b
+            from-white/80 via-white/10 to-transparent
+            opacity-80
+          "
+        />
+
+        {/* CONTENT */}
+        <div className="relative flex items-start gap-6 px-4 py-4 sm:px-6 sm:py-5">
+          {/* LEFT: 3D BOOK */}
+          <div className="relative flex-shrink-0 mt-1">
+            {/* ⭐ Taller soft shadows behind book */}
+            <div className="absolute -left-3 top-1 w-[110px] sm:w-[100px] h-[210px] sm:h-[220px] rounded-xl bg-slate-100/80 shadow-[0_14px_24px_rgba(15,23,42,0.14)] opacity-70" />
+            <div className="absolute -left-1 top-1 w-[118px] sm:w-[106px] h-[210px] sm:h-[220px] rounded-xl bg-slate-50/90 shadow-[0_18px_30px_rgba(15,23,42,0.18)] opacity-90" />
+
+            {/* ⭐ MAIN COVER – height increased */}
             <div
-              className={`absolute inset-0 pointer-events-none book-shine ${hover ? 'animate-shine' : ''
-                }`}
-            />
-            <div className="absolute top-2 left-2 right-2 flex items-center gap-2 flex-wrap z-10">
-              {book?.category && (
-                <span className="px-2 py-0.5 text-[10px] rounded-full bg-black/10 text-gray-800 border border-black/10 backdrop-blur-sm">
-                  {tc(book.category)}
-                </span>
-              )}
-              {book?.language && (
-                <span className="px-2 py-0.5 text-[10px] rounded-full bg-black/10 text-gray-800 border border-black/10 backdrop-blur-sm flex items-center gap-1">
-                  <Languages className="h-3 w-3" /> {tc(book.language)}
-                </span>
-              )}
-              {book?.educational_level && (
-                <span className="px-2 py-0.5 text-[10px] rounded-full bg-black/10 text-gray-800 border border-black/10 backdrop-blur-sm flex items-center gap-1">
-                  <GraduationCap className="h-3 w-3" />{' '}
-                  {tc(book.educational_level)}
-                </span>
-              )}
-            </div>
-            <div className="absolute inset-0 flex flex-col text-gray-800">
-              <div className="flex-1 flex items-center justify-center px-6 text-center">
-                <h3 className="font-bold text-[20px] sm:text-[22px] leading-tight tracking-wide">
-                  {book.title || 'Untitled Book'}
-                </h3>
-              </div>
-              <div className="px-4 pb-4 text-[11px] space-y-1">
-                {book.author && (
-                  <div className="text-center font-semibold tracking-[0.18em] text-xs text-gray-700">
-                    {(book.author || '').toUpperCase()}
-                  </div>
+              className="
+                relative
+                w-[130px] sm:w-[140px] md:w-[155px]
+                h-[210px] sm:h-[215px] md:h-[225px]
+                book-inner
+                origin-bottom-left
+                transition-transform duration-300 ease-out
+                group-hover:-translate-y-1 group-hover:-rotate-1 group-hover:scale-[1.02]
+              "
+            >
+              <div
+                className="
+                  absolute inset-0 rounded-xl overflow-hidden
+                  book-front
+                  border border-slate-200/70
+                "
+                style={frontCoverStyle}
+              >
+                {/* Placeholder design + text ONLY when no cover */}
+                {!coverUrl && (
+                  <>
+                    {/* background pattern */}
+                    <div
+                      className="absolute -bottom-12 left-0 w-[150%] h-[85%] pointer-events-none"
+                      dangerouslySetInnerHTML={{
+                        __html: waveTheme.patternSVG,
+                      }}
+                    />
+
+                    {/* subtle lines */}
+                    <svg
+                      className="absolute -top-10 right-0 w-[80%] h-[50%] opacity-40 pointer-events-none"
+                      viewBox="0 0 400 200"
+                    >
+                      <defs>
+                        <linearGradient
+                          id="lineGrad"
+                          x1="0"
+                          y1="0"
+                          x2="1"
+                          y2="0"
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor="#d4d4d4"
+                            stopOpacity="0.25"
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor={waveTheme.accentDark}
+                            stopOpacity="0.45"
+                          />
+                        </linearGradient>
+                      </defs>
+                      <path
+                        d="M-40,180 L200,-10"
+                        stroke="url(#lineGrad)"
+                        strokeWidth="0.7"
+                      />
+                      <path
+                        d="M0,200 L240,0"
+                        stroke="url(#lineGrad)"
+                        strokeWidth="0.7"
+                      />
+                      <path
+                        d="M40,210 L280,10"
+                        stroke="url(#lineGrad)"
+                        strokeWidth="0.7"
+                      />
+                      <path
+                        d="M80,220 L320,20"
+                        stroke="url(#lineGrad)"
+                        strokeWidth="0.7"
+                      />
+                    </svg>
+
+                    <div className="relative z-10 flex h-full flex-col px-3 py-3 gap-1">
+                      <p className="text-[11px] sm:text-xs font-semibold text-slate-900/95 line-clamp-2">
+                        {displayTitleTc}
+                      </p>
+
+                      {book.author && (
+                        <p className="text-[9px] sm:text-[10px] text-slate-600 line-clamp-1">
+                          by {tc(book.author)}
+                        </p>
+                      )}
+
+                      {/* Small description / teaching style */}
+                      {book.teaching_style && (
+                        <p className="text-[9px] text-slate-500 line-clamp-1">
+                          {tc(book.teaching_style)}
+                        </p>
+                      )}
+
+                      {/* Bottom chips – category, language, level, target group */}
+                      <div className="mt-auto flex flex-wrap gap-1">
+                        {book.category && (
+                          <span className="px-2 py-0.5 rounded-full bg-white/80 text-[9px] font-medium uppercase tracking-wide text-slate-600">
+                            {tc(book.category)}
+                          </span>
+                        )}
+                        {book.language && (
+                          <span className="px-2 py-0.5 rounded-full bg-white/70 text-[9px] text-slate-600">
+                            {tc(book.language)}
+                          </span>
+                        )}
+                        {book.educational_level && (
+                          <span className="px-2 py-0.5 rounded-full bg-white/70 text-[9px] text-slate-600">
+                            {tc(book.educational_level)}
+                          </span>
+                        )}
+                        {book.target_group && (
+                          <span className="px-2 py-0.5 rounded-full bg-white/70 text-[9px] text-slate-600 line-clamp-1">
+                            {tc(book.target_group)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </>
                 )}
 
-                <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 opacity-95 text-gray-600">
-                  {book.teaching_style && (
-                    <span className="flex items-center gap-1">
-                      <Layers className="h-3 w-3" /> {tc(book.teaching_style)}
-                    </span>
-                  )}
-                  {book.target_group && (
-                    <span className="flex items-center gap-1">
-                      <Target className="h-3 w-3" /> {tc(book.target_group)}
-                    </span>
-                  )}
-                  {book.educational_level && (
-                    <span className="flex items-center gap-1">
-                      <Gauge className="h-3 w-3" /> {book.educational_level}
-                    </span>
-                  )}
-                </div>
+                {/* shine on hover (CSS controls animation) */}
+                <div
+                  className="
+                    absolute inset-0 pointer-events-none
+                    opacity-0 group-hover:opacity-100
+                    book-shine animate-shine
+                  "
+                />
+              </div>
 
-                <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 opacity-90 text-gray-500">
-                  {book.updated_at || book.lastModified ? (
-                    <span className="flex items-center gap-1">
-                      <CalendarClock className="h-3 w-3" />{' '}
-                      {d(book.updated_at || book.lastModified)}
-                    </span>
-                  ) : null}
+              {/* SPINE */}
+              <div
+                className="absolute top-0 right-0 h-full w-[14px] rounded-r-xl overflow-hidden"
+                style={{
+                  transform: "rotateY(90deg)",
+                  transformOrigin: "right center",
+                  boxShadow:
+                    "0 0 10px rgba(15,23,42,0.4), 0 0 0 1px rgba(15,23,42,0.55)",
+                  background: `linear-gradient(
+                    to bottom,
+                    ${waveTheme.accentDark},
+                    ${waveTheme.accentMid}
+                  )`,
+                }}
+              >
+                <div
+                  className="absolute inset-y-2 left-[2px] w-[55%] rounded-full"
+                  style={{
+                    background:
+                      "linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(255,255,255,0.35))",
+                    opacity: 0.9,
+                  }}
+                />
+                <div className="relative h-full flex items-center justify-center">
+                  <span className="text-[9px] text-white/95 font-semibold tracking-wide -rotate-90 whitespace-nowrap">
+                    {displayTitleTc.slice(0, 26)}
+                  </span>
                 </div>
               </div>
             </div>
-            <span
-              className={`absolute top-3 right-3 text-[10px] px-2 py-0.5 rounded-full font-medium ${badgeColor(
-                status
-              )} shadow-sm z-10`}
-            >
-              {status}
-            </span>
           </div>
-          <div
-            className="absolute top-0 right-0 h-full w-[12px] bg-gradient-to-b from-gray-900 to-gray-700"
-            style={{ transform: 'rotateY(90deg)', transformOrigin: 'right center' }}
-          >
-            <div className="h-full flex items-center justify-center">
-              <span className="text-[9px] text-white/90 font-semibold tracking-wide -rotate-90 whitespace-nowrap">
-                {(book.title || 'Book').slice(0, 26)}
+
+          {/* ⭐ RIGHT: TEXT INFO – center aligned like screenshot */}
+          <div className="flex-1 min-w-0 flex flex-col gap-1.5 self-start">
+            {/* Top: title + status */}
+            <div className="flex items-start justify-between gap-1">
+              <div className="min-w-0 space-y-0.5">
+                {/* Title */}
+                <h3 className="text-xs sm:text-sm md:text-base font-semibold text-slate-900 truncate">
+                  {displayTitleTc}
+                </h3>
+
+                {/* Author */}
+                {book.author && (
+                  <p className="text-[10px] sm:text-[11px] text-slate-600 truncate">
+                    by {tc(book.author)}
+                  </p>
+                )}
+              </div>
+
+              <span
+                className={`shrink-0 text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-medium ${badgeColor(
+                  status
+                )} shadow-sm`}
+              >
+                {tc(status)}
               </span>
             </div>
+
+            {/* ✅ Meta – sabhi rows 10px top-gap ke saath */}
+            <div className="mt-[10px] flex flex-col gap-[15px] text-[10px] sm:text-[11px] text-slate-600">
+              {book.category && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <BookOpen className="h-3 w-3" />
+                  <span className="truncate">{tc(book.category)}</span>
+                </span>
+              )}
+
+              {book.language && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <Languages className="h-3 w-3" />
+                  <span className="truncate">{tc(book.language)}</span>
+                </span>
+              )}
+
+              {book.educational_level && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <GraduationCap className="h-3 w-3" />
+                  <span className="truncate">{tc(book.educational_level)}</span>
+                </span>
+              )}
+
+              {book.teaching_style && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <Layers className="h-3 w-3" />
+                  <span className="truncate">{tc(book.teaching_style)}</span>
+                </span>
+              )}
+
+              {book.target_group && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <Target className="h-3 w-3" />
+                  <span className="truncate">{tc(book.target_group)}</span>
+                </span>
+              )}
+
+              {(book.updated_at || book.lastModified) && (
+                <span className="flex items-center gap-1 min-w-0">
+                  <CalendarClock className="h-3 w-3" />
+                  <span className="truncate">
+                    Updated {d(book.updated_at || book.lastModified)}
+                  </span>
+                </span>
+              )}
+            </div>
           </div>
-          <div
-            className="absolute inset-y-1 right-[12px] w-[12px] bg-[repeating-linear-gradient(to_bottom,#f8fafc_0_2px,#e5e7eb_2px_3px)] rounded-r-sm"
-            style={{
-              transform: 'translateZ(-1px)',
-              boxShadow: 'inset 0 0 2px rgba(0,0,0,0.08)',
-            }}
-          />
+
+
         </div>
       </div>
-      <div className="mt-3 h-2 rounded-full bg-gray-200/70 group-hover:bg-gray-300 transition-colors" />
-      <style jsx>{`
-        .book3d {
-          perspective: 1000px;
-        }
-        .rotate-y-6 {
-          transform: perspective(1000px) rotateY(6deg);
-        }
-        .book-shine {
-          background: linear-gradient(
-            105deg,
-            transparent 20%,
-            rgba(255, 255, 255, 0.45) 45%,
-            transparent 60%
-          );
-          transform: skewX(-18deg) translateX(-120%);
-          opacity: 0;
-        }
-        .animate-shine {
-          animation: shine 1.2s ease-in-out forwards;
-        }
-        @keyframes shine {
-          0% {
-            transform: skewX(-18deg) translateX(-120%);
-            opacity: 0;
-          }
-          25% {
-            opacity: 0.25;
-          }
-          60% {
-            opacity: 0.15;
-          }
-          100% {
-            transform: skewX(-18deg) translateX(120%);
-            opacity: 0;
-          }
-        }
-      `}</style>
+
+      {/* bottom tray shadow */}
+      <div className="mt-3 h-2 rounded-full bg-black/25 opacity-60 group-hover:opacity-80 transition-opacity duration-300" />
     </button>
   );
 }
+
+
+

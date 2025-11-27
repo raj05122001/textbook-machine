@@ -253,7 +253,7 @@ export default function BookGrid({
       </div>
 
       {/* ---- grid ---- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-6">
         {filtered.map((b) => (
           <BookTile key={b.id} book={b} onClick={() => onBookSelect?.(b)} />
         ))}

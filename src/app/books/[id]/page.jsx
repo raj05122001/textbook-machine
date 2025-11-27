@@ -1157,10 +1157,9 @@ function ThemePanel({
                         Choose Background (all pages)
                       </div>
 
-                      <div style={{ color: "#cbd5f5", lineHeight: 1.5,zIndex:1000 }}>
-                        Tip: 2480×3508 (A4 @ 300 DPI) best rahega. SVG/data URL bhi
-                        chalega. Agar “Add watermark” on hai, to upload hote hi
-                        diagonal repeated text embed ho jayega.
+                      <div style={{ color: "#cbd5f5", lineHeight: 1.5,zIndex:10000 }}>
+                       Tip: 2480×3508 (A4 at 300 DPI) works best. SVG/data URLs are also supported. If “Add watermark” is on, a diagonal repeated text watermark will be embedded as soon as you upload.
+
                       </div>
                     </div>
                   )}
